@@ -205,7 +205,6 @@ function App() {
         if (!isEmpty || wasEmpty) return
         dialog.replace(() => <DialogProviderList />)
       },
-      { defer: true },
     ),
   )
 
