@@ -8,6 +8,7 @@ import { Instance } from "@/project/instance"
 import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { Plugin } from "@/plugin"
+import { SystemPrompt } from "./system"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -22,6 +23,7 @@ export namespace LLM {
     system: string[]
     abort: AbortSignal
     messages: ModelMessage[]
+    small?: boolean
     tools: Record<string, Tool>
     retries?: number
   }
@@ -29,9 +31,19 @@ export namespace LLM {
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
 
   export async function stream(input: StreamInput) {
+    const l = log
+      .clone()
+      .tag("providerID", input.model.providerID)
+      .tag("modelID", input.model.id)
+      .tag("sessionID", input.sessionID)
+      .tag("small", (input.small ?? false).toString())
+    l.info("stream", {
+      modelID: input.model.id,
+      providerID: input.model.providerID,
+    })
     const [language, cfg] = await Promise.all([Provider.getLanguage(input.model), Config.get()])
 
-    const [first, ...rest] = input.system
+    const [first, ...rest] = [...SystemPrompt.header(input.model.providerID), ...input.system]
     const system = [first, rest.join("\n")]
 
     const params = await Plugin.trigger(
@@ -49,12 +61,17 @@ export namespace LLM {
           : undefined,
         topP: input.agent.topP ?? ProviderTransform.topP(input.model),
         options: pipe(
-          ProviderTransform.options(input.model, input.sessionID),
+          mergeDeep(ProviderTransform.options(input.model, input.sessionID)),
+          input.small ? mergeDeep(ProviderTransform.smallOptions(input.model)) : mergeDeep({}),
           mergeDeep(input.model.options),
           mergeDeep(input.agent.options),
         ),
       },
     )
+
+    l.info("params", {
+      params,
+    })
 
     const maxOutputTokens = ProviderTransform.maxOutputTokens(
       input.model.api.npm,
@@ -65,14 +82,14 @@ export namespace LLM {
 
     return streamText({
       onError(error) {
-        log.error("stream error", {
+        l.error("stream error", {
           error,
         })
       },
       async experimental_repairToolCall(failed) {
         const lower = failed.toolCall.toolName.toLowerCase()
         if (lower !== failed.toolCall.toolName && input.tools[lower]) {
-          log.info("repairing tool call", {
+          l.info("repairing tool call", {
             tool: failed.toolCall.toolName,
             repaired: lower,
           })
@@ -94,6 +111,7 @@ export namespace LLM {
       topP: params.topP,
       providerOptions: ProviderTransform.providerOptions(input.model, params.options, input.messages),
       activeTools: Object.keys(input.tools).filter((x) => x !== "invalid"),
+      tools: input.tools,
       maxOutputTokens,
       abortSignal: input.abort,
       headers: {

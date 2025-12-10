@@ -41,6 +41,8 @@ import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
 import { TaskTool } from "@/tool/task"
 import { SessionStatus } from "./status"
+import { LLM } from "./llm"
+import { iife } from "@/util/iife"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -281,7 +283,6 @@ export namespace SessionPrompt {
         })
 
       const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
-      const language = await Provider.getLanguage(model)
       const task = tasks.pop()
 
       // pending subtask
@@ -427,7 +428,6 @@ export namespace SessionPrompt {
       }
 
       // normal processing
-      const cfg = await Config.get()
       const agent = await Agent.get(lastUser.agent)
       const maxSteps = agent.maxSteps ?? Infinity
       const isLastStep = step >= maxSteps
@@ -435,6 +435,7 @@ export namespace SessionPrompt {
         messages: msgs,
         agent,
       })
+
       const processor = SessionProcessor.create({
         assistantMessage: (await Session.updateMessage({
           id: Identifier.ascending("message"),
@@ -467,7 +468,6 @@ export namespace SessionPrompt {
         model,
         agent,
         system: lastUser.system,
-        isLastStep,
       })
       const tools = await resolveTools({
         agent,
@@ -526,13 +526,9 @@ export namespace SessionPrompt {
     return Provider.defaultModel()
   }
 
-  async function resolveSystemPrompt(input: {
-    system?: string
-    agent: Agent.Info
-    model: Provider.Model
-    isLastStep?: boolean
-  }) {
-    let system = SystemPrompt.header(input.model.providerID)
+  async function resolveSystemPrompt(input: { system?: string; agent: Agent.Info; model: Provider.Model }) {
+    using _ = log.time("system")
+    let system = []
     system.push(
       ...(() => {
         if (input.system) return [input.system]
@@ -542,14 +538,6 @@ export namespace SessionPrompt {
     )
     system.push(...(await SystemPrompt.environment()))
     system.push(...(await SystemPrompt.custom()))
-
-    if (input.isLastStep) {
-      system.push(MAX_STEPS)
-    }
-
-    // max 2 system prompt messages for caching purposes
-    const [first, ...rest] = system
-    system = [first, rest.join("\n")]
     return system
   }
 
@@ -560,6 +548,7 @@ export namespace SessionPrompt {
     tools?: Record<string, boolean>
     processor: SessionProcessor.Info
   }) {
+    using _ = log.time("resolveTools")
     const tools: Record<string, AITool> = {}
     const enabledTools = pipe(
       input.agent.tools,
@@ -1319,28 +1308,24 @@ export namespace SessionPrompt {
       input.history.filter((m) => m.info.role === "user" && !m.parts.every((p) => "synthetic" in p && p.synthetic))
         .length === 1
     if (!isFirst) return
-    const cfg = await Config.get()
-    const small =
-      (await Provider.getSmallModel(input.providerID)) ?? (await Provider.getModel(input.providerID, input.modelID))
-    const language = await Provider.getLanguage(small)
-    const provider = await Provider.getProvider(small.providerID)
-    const options = pipe(
-      {},
-      mergeDeep(ProviderTransform.options(small, input.session.id, provider?.options)),
-      mergeDeep(ProviderTransform.smallOptions(small)),
-      mergeDeep(small.options),
-    )
-    await generateText({
-      // use higher # for reasoning models since reasoning tokens eat up a lot of the budget
-      maxOutputTokens: small.capabilities.reasoning ? 3000 : 20,
-      providerOptions: ProviderTransform.providerOptions(small, options, []),
+    const agent = await Agent.get("summary")
+    if (!agent) return
+    const result = await LLM.stream({
+      agent,
+      user: input.message.info as MessageV2.User,
+      system: [agent.prompt!],
+      small: true,
+      tools: {},
+      model: await iife(async () => {
+        if (agent.model) return await Provider.getModel(agent.model.providerID, agent.model.modelID)
+        return (
+          (await Provider.getSmallModel(input.providerID)) ?? (await Provider.getModel(input.providerID, input.modelID))
+        )
+      }),
+      abort: new AbortController().signal,
+      sessionID: input.session.id,
+      retries: 2,
       messages: [
-        ...SystemPrompt.title(small.providerID).map(
-          (x): ModelMessage => ({
-            role: "system",
-            content: x,
-          }),
-        ),
         {
           role: "user",
           content: "Generate a title for this conversation:\n",
@@ -1364,32 +1349,19 @@ export namespace SessionPrompt {
           },
         ]),
       ],
-      headers: small.headers,
-      model: language,
-      experimental_telemetry: {
-        isEnabled: cfg.experimental?.openTelemetry,
-        metadata: {
-          userId: cfg.username ?? "unknown",
-          sessionId: input.session.id,
-        },
-      },
     })
-      .then((result) => {
-        if (result.text)
-          return Session.update(input.session.id, (draft) => {
-            const cleaned = result.text
-              .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
-              .split("\n")
-              .map((line) => line.trim())
-              .find((line) => line.length > 0)
-            if (!cleaned) return
+    const text = await result.text.catch((err) => log.error("failed to generate title", { error: err }))
+    if (text)
+      return Session.update(input.session.id, (draft) => {
+        const cleaned = text
+          .replace(/<think>[\s\S]*?<\/think>\s*/g, "")
+          .split("\n")
+          .map((line) => line.trim())
+          .find((line) => line.length > 0)
+        if (!cleaned) return
 
-            const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
-            draft.title = title
-          })
-      })
-      .catch((error) => {
-        log.error("failed to generate title", { error, model: small.id })
+        const title = cleaned.length > 100 ? cleaned.substring(0, 97) + "..." : cleaned
+        draft.title = title
       })
   }
 }

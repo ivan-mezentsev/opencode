@@ -129,7 +129,7 @@ export namespace SessionCompaction {
     })
     const agent = await Agent.get(input.agent)
     const result = await processor.process({
-      requestID: input.parentID,
+      user: input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User,
       agent,
       abort: input.abort,
       sessionID: input.sessionID,
