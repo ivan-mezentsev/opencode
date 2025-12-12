@@ -9,6 +9,7 @@ import type { Agent } from "@/agent/agent"
 import type { MessageV2 } from "./message-v2"
 import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
+import { ToolRegistry } from "@/tool/registry"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -43,7 +44,12 @@ export namespace LLM {
     })
     const [language, cfg] = await Promise.all([Provider.getLanguage(input.model), Config.get()])
 
-    const [first, ...rest] = [...SystemPrompt.header(input.model.providerID), ...input.system]
+    const [first, ...rest] = [
+      ...SystemPrompt.header(input.model.providerID),
+      ...(input.agent.prompt ?? SystemPrompt.provider(input.model)),
+      ...input.system,
+      ...(input.user.system ? [input.user.system] : []),
+    ]
     const system = [first, rest.join("\n")]
 
     const params = await Plugin.trigger(
@@ -80,6 +86,8 @@ export namespace LLM {
       OUTPUT_TOKEN_MAX,
     )
 
+    const tools = await resolveTools(input)
+
     return streamText({
       onError(error) {
         l.error("stream error", {
@@ -88,7 +96,7 @@ export namespace LLM {
       },
       async experimental_repairToolCall(failed) {
         const lower = failed.toolCall.toolName.toLowerCase()
-        if (lower !== failed.toolCall.toolName && input.tools[lower]) {
+        if (lower !== failed.toolCall.toolName && tools[lower]) {
           l.info("repairing tool call", {
             tool: failed.toolCall.toolName,
             repaired: lower,
@@ -110,8 +118,8 @@ export namespace LLM {
       temperature: params.temperature,
       topP: params.topP,
       providerOptions: ProviderTransform.providerOptions(input.model, params.options),
-      activeTools: Object.keys(input.tools).filter((x) => x !== "invalid"),
-      tools: input.tools,
+      activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
+      tools,
       maxOutputTokens,
       abortSignal: input.abort,
       headers: {
@@ -150,5 +158,17 @@ export namespace LLM {
       }),
       experimental_telemetry: { isEnabled: cfg.experimental?.openTelemetry },
     })
+  }
+
+  async function resolveTools(input: Pick<StreamInput, "tools" | "agent" | "user">) {
+    const enabled = pipe(
+      input.agent.tools,
+      mergeDeep(await ToolRegistry.enabled(input.agent)),
+      mergeDeep(input.user.tools ?? {}),
+    )
+    for (const [key, value] of Object.entries(enabled)) {
+      if (value === false) delete input.tools[key]
+    }
+    return input.tools
   }
 }

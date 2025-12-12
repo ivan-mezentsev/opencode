@@ -122,7 +122,7 @@ export namespace SystemPrompt {
   export function compaction(providerID: string) {
     switch (providerID) {
       case "anthropic":
-        return [PROMPT_ANTHROPIC_SPOOF.trim(), PROMPT_COMPACTION]
+        return [PROMPT_COMPACTION]
       default:
         return [PROMPT_COMPACTION]
     }
@@ -131,7 +131,7 @@ export namespace SystemPrompt {
   export function summarize(providerID: string) {
     switch (providerID) {
       case "anthropic":
-        return [PROMPT_ANTHROPIC_SPOOF.trim(), PROMPT_SUMMARIZE]
+        return [PROMPT_SUMMARIZE]
       default:
         return [PROMPT_SUMMARIZE]
     }
@@ -140,7 +140,7 @@ export namespace SystemPrompt {
   export function title(providerID: string) {
     switch (providerID) {
       case "anthropic":
-        return [PROMPT_ANTHROPIC_SPOOF.trim(), PROMPT_TITLE]
+        return [PROMPT_TITLE]
       default:
         return [PROMPT_TITLE]
     }

@@ -91,10 +91,10 @@ export namespace SessionCompaction {
       providerID: string
       modelID: string
     }
-    agent: string
     abort: AbortSignal
     auto: boolean
   }) {
+    const agent = await Agent.get("compaction")
     const model = await Provider.getModel(input.model.providerID, input.model.modelID)
     const system = [...SystemPrompt.compaction(model.providerID)]
     const msg = (await Session.updateMessage({
@@ -102,7 +102,8 @@ export namespace SessionCompaction {
       role: "assistant",
       parentID: input.parentID,
       sessionID: input.sessionID,
-      mode: input.agent,
+      mode: "compaction",
+      agent: "compaction",
       summary: true,
       path: {
         cwd: Instance.directory,
@@ -127,7 +128,6 @@ export namespace SessionCompaction {
       model: model,
       abort: input.abort,
     })
-    const agent = await Agent.get(input.agent)
     const result = await processor.process({
       user: input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User,
       agent,

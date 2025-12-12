@@ -5,24 +5,22 @@ import z from "zod"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
-import { Flag } from "../flag/flag"
 import { SessionRevert } from "./revert"
 import { Session } from "."
 import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
-import { generateText, type ModelMessage, type Tool as AITool, tool, jsonSchema } from "ai"
+import { type Tool as AITool, tool, jsonSchema } from "ai"
 import { SessionCompaction } from "./compaction"
 import { Instance } from "../project/instance"
 import { Bus } from "../bus"
 import { ProviderTransform } from "../provider/transform"
 import { SystemPrompt } from "./system"
 import { Plugin } from "../plugin"
-
 import PROMPT_PLAN from "../session/prompt/plan.txt"
 import BUILD_SWITCH from "../session/prompt/build-switch.txt"
 import MAX_STEPS from "../session/prompt/max-steps.txt"
 import { defer } from "../util/defer"
-import { clone, mergeDeep, pipe } from "remeda"
+import { mergeDeep, pipe } from "remeda"
 import { ToolRegistry } from "../tool/registry"
 import { Wildcard } from "../util/wildcard"
 import { MCP } from "../mcp"
@@ -36,7 +34,6 @@ import { Command } from "../command"
 import { $, fileURLToPath } from "bun"
 import { ConfigMarkdown } from "../config/markdown"
 import { SessionSummary } from "./summary"
-import { Config } from "../config/config"
 import { NamedError } from "@opencode-ai/util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
@@ -89,8 +86,8 @@ export namespace SessionPrompt {
       .optional(),
     agent: z.string().optional(),
     noReply: z.boolean().optional(),
-    system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
+    system: z.string().optional(),
     parts: z.array(
       z.discriminatedUnion("type", [
         MessageV2.TextPart.omit({
@@ -137,6 +134,20 @@ export namespace SessionPrompt {
     ),
   })
   export type PromptInput = z.infer<typeof PromptInput>
+
+  export const prompt = fn(PromptInput, async (input) => {
+    const session = await Session.get(input.sessionID)
+    await SessionRevert.cleanup(session)
+
+    const message = await createUserMessage(input)
+    await Session.touch(input.sessionID)
+
+    if (input.noReply === true) {
+      return message
+    }
+
+    return loop(input.sessionID)
+  })
 
   export async function resolvePromptParts(template: string): Promise<PromptInput["parts"]> {
     const parts: PromptInput["parts"] = [
@@ -188,20 +199,6 @@ export namespace SessionPrompt {
     )
     return parts
   }
-
-  export const prompt = fn(PromptInput, async (input) => {
-    const session = await Session.get(input.sessionID)
-    await SessionRevert.cleanup(session)
-
-    const message = await createUserMessage(input)
-    await Session.touch(input.sessionID)
-
-    if (input.noReply === true) {
-      return message
-    }
-
-    return loop(input.sessionID)
-  })
 
   function start(sessionID: string) {
     const s = state()
@@ -296,6 +293,7 @@ export namespace SessionPrompt {
           parentID: lastUser.id,
           sessionID,
           mode: task.agent,
+          agent: task.agent,
           path: {
             cwd: Instance.directory,
             root: Instance.worktree,
@@ -406,7 +404,6 @@ export namespace SessionPrompt {
           messages: msgs,
           parentID: lastUser.id,
           abort,
-          agent: lastUser.agent,
           model: {
             providerID: model.providerID,
             modelID: model.id,
@@ -448,6 +445,7 @@ export namespace SessionPrompt {
           parentID: lastUser.id,
           role: "assistant",
           mode: agent.name,
+          agent: agent.name,
           path: {
             cwd: Instance.directory,
             root: Instance.worktree,
@@ -470,11 +468,6 @@ export namespace SessionPrompt {
         model,
         abort,
       })
-      const system = await resolveSystemPrompt({
-        model,
-        agent,
-        system: lastUser.system,
-      })
       const tools = await resolveTools({
         agent,
         sessionID,
@@ -495,7 +488,7 @@ export namespace SessionPrompt {
         agent,
         abort,
         sessionID,
-        system,
+        system: [...(await SystemPrompt.environment()), ...(await SystemPrompt.custom())],
         messages: [
           ...MessageV2.toModelMessage(msgs),
           ...(isLastStep
@@ -532,21 +525,6 @@ export namespace SessionPrompt {
     return Provider.defaultModel()
   }
 
-  async function resolveSystemPrompt(input: { system?: string; agent: Agent.Info; model: Provider.Model }) {
-    using _ = log.time("system")
-    let system = []
-    system.push(
-      ...(() => {
-        if (input.system) return [input.system]
-        if (input.agent.prompt) return [input.agent.prompt]
-        return SystemPrompt.provider(input.model)
-      })(),
-    )
-    system.push(...(await SystemPrompt.environment()))
-    system.push(...(await SystemPrompt.custom()))
-    return system
-  }
-
   async function resolveTools(input: {
     agent: Agent.Info
     model: Provider.Model
@@ -561,7 +539,6 @@ export namespace SessionPrompt {
       mergeDeep(await ToolRegistry.enabled(input.agent)),
       mergeDeep(input.tools ?? {}),
     )
-
     for (const item of await ToolRegistry.tools(input.model.providerID)) {
       if (Wildcard.all(item.id, enabledTools) === false) continue
       const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
@@ -625,7 +602,6 @@ export namespace SessionPrompt {
         },
       })
     }
-
     for (const [key, item] of Object.entries(await MCP.tools())) {
       if (Wildcard.all(key, enabledTools) === false) continue
       const execute = item.execute
@@ -704,7 +680,6 @@ export namespace SessionPrompt {
         created: Date.now(),
       },
       tools: input.tools,
-      system: input.system,
       agent: agent.name,
       model: input.model ?? agent.model ?? (await lastModel(input.sessionID)),
     }
@@ -995,7 +970,7 @@ export namespace SessionPrompt {
         synthetic: true,
       })
     }
-    const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.mode === "plan")
+    const wasPlan = input.messages.some((msg) => msg.info.role === "assistant" && msg.info.agent === "plan")
     if (wasPlan && input.agent.name === "build") {
       userMessage.parts.push({
         id: Identifier.ascending("part"),
@@ -1057,6 +1032,7 @@ export namespace SessionPrompt {
       sessionID: input.sessionID,
       parentID: userMsg.id,
       mode: input.agent,
+      agent: input.agent,
       cost: 0,
       path: {
         cwd: Instance.directory,
