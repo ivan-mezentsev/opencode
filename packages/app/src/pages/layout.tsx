@@ -65,6 +65,7 @@ import { navStart } from "@/utils/perf"
 import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { DialogEditProject } from "@/components/dialog-edit-project"
 import { ReleaseNotesHandler } from "@/components/release-notes-handler"
+import { ShortcutsPanel } from "@/components/shortcuts-panel"
 import { Titlebar } from "@/components/titlebar"
 import { useServer } from "@/context/server"
 
@@ -80,6 +81,7 @@ export default function Layout(props: ParentProps) {
       workspaceExpanded: {} as Record<string, boolean>,
     }),
   )
+  const [shortcutsOpen, setShortcutsOpen] = createSignal(false)
 
   const pageReady = createMemo(() => ready())
 
@@ -749,6 +751,13 @@ export default function Layout(props: ParentProps) {
         category: "View",
         keybind: "mod+b",
         onSelect: () => layout.sidebar.toggle(),
+      },
+      {
+        id: "shortcuts.toggle",
+        title: "Toggle shortcuts panel",
+        category: "View",
+        keybind: "ctrl+/",
+        onSelect: () => setShortcutsOpen(!shortcutsOpen()),
       },
       {
         id: "project.open",
@@ -1928,14 +1937,19 @@ export default function Layout(props: ParentProps) {
             <Tooltip placement={sidebarProps.mobile ? "bottom" : "right"} value="Settings" class="hidden">
               <IconButton disabled icon="settings-gear" variant="ghost" size="large" />
             </Tooltip>
-            <Tooltip placement={sidebarProps.mobile ? "bottom" : "right"} value="Help">
-              <IconButton
-                icon="help"
-                variant="ghost"
-                size="large"
-                onClick={() => platform.openLink("https://opencode.ai/desktop-feedback")}
-              />
-            </Tooltip>
+            <DropdownMenu>
+              <Tooltip placement={sidebarProps.mobile ? "bottom" : "right"} value="Help">
+                <DropdownMenu.Trigger as={IconButton} icon="question-mark" variant="ghost" size="large" />
+              </Tooltip>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content>
+                  <DropdownMenu.Item onSelect={() => platform.openLink("https://opencode.ai/desktop-feedback")}>
+                    Submit feedback
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={() => setShortcutsOpen(true)}>Keyboard shortcuts</DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu>
           </div>
         </div>
 
@@ -2146,11 +2160,15 @@ export default function Layout(props: ParentProps) {
           classList={{
             "size-full overflow-x-hidden flex flex-col items-start contain-strict border-t border-border-weak-base": true,
             "xl:border-l xl:rounded-tl-sm": !layout.sidebar.opened(),
+            "shortcuts-open": shortcutsOpen(),
           }}
         >
           {props.children}
         </main>
       </div>
+      <Show when={shortcutsOpen()}>
+        <ShortcutsPanel onClose={() => setShortcutsOpen(false)} />
+      </Show>
       <Toast.Region />
       <ReleaseNotesHandler />
     </div>

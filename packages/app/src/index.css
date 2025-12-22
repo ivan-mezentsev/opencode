@@ -36,3 +36,173 @@
     }
   }
 }
+
+/* Shortcuts panel */
+[data-component="shortcuts-panel"] {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-background-base);
+  border-top: 1px solid var(--color-border-weak-base);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  height: 280px;
+  animation: slide-up 0.2s ease-out;
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.shortcuts-panel [data-component="tabs"] {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.shortcuts-tabs-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  position: relative;
+  padding: 16px 0;
+}
+
+.shortcuts-tabs-row > [data-component="icon-button"] {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.shortcuts-panel [data-slot="tabs-list"] {
+  height: auto;
+  justify-content: center;
+  gap: 24px;
+}
+
+.shortcuts-panel [data-slot="tabs-list"]::after {
+  display: none;
+}
+
+.shortcuts-panel [data-slot="tabs-trigger-wrapper"] {
+  background: transparent;
+  border: 0.5px solid transparent;
+  font-weight: var(--font-weight-regular);
+  border-radius: 6px;
+  color: var(--color-text-weak);
+}
+
+.shortcuts-panel [data-slot="tabs-trigger-wrapper"]:hover {
+  background: var(--color-surface-base);
+}
+
+.shortcuts-panel [data-slot="tabs-trigger-wrapper"]:has([data-selected]) {
+  border: 1px solid var(--color-border-weak-base);
+  background: var(--color-surface-raised-base);
+  color: var(--color-text-strong);
+}
+
+.shortcuts-panel [data-slot="tabs-trigger"] {
+  padding: 4px 12px;
+}
+
+.shortcuts-panel [data-slot="tabs-content"] {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 240px);
+  gap: 4px 48px;
+  align-content: start;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 6px 12px;
+  margin: 0 -12px;
+  gap: 16px;
+  height: 36px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+  text-align: left;
+  width: calc(100% + 24px);
+  box-sizing: border-box;
+}
+
+.shortcut-item:hover {
+  background: var(--color-surface-base);
+}
+
+.shortcut-item:hover .shortcut-key {
+  background: var(--color-background-stronger);
+}
+
+.shortcut-item:active {
+  background: var(--color-surface-raised-base);
+}
+
+.shortcut-item.shortcut-used span {
+  color: var(--color-text-interactive-base);
+}
+
+.shortcut-item.shortcut-used .shortcut-key {
+  color: var(--color-text-interactive-base);
+  border-color: var(--color-border-interactive-base);
+  background: var(--color-surface-interactive-base);
+  box-shadow: var(--shadow-xs-border-interactive);
+}
+
+.shortcut-keys {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.shortcut-copied {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-success-base);
+  margin-right: 4px;
+}
+
+.shortcut-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-subtle);
+  box-shadow: var(--shadow-xs-border-base);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Adjust main content when shortcuts panel is open */
+main.shortcuts-open {
+  padding-bottom: 280px;
+}

@@ -1,6 +1,8 @@
-import { createMemo, createSignal, onCleanup, onMount, type Accessor } from "solid-js"
+import { createMemo, createSignal, onCleanup, onMount, Show, type Accessor } from "solid-js"
 import { createSimpleContext } from "@opencode-ai/ui/context"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
+import { Dialog } from "@opencode-ai/ui/dialog"
+import { List } from "@opencode-ai/ui/list"
 
 const IS_MAC = typeof navigator === "object" && /(Mac|iPod|iPhone|iPad)/.test(navigator.platform)
 
@@ -120,6 +122,73 @@ export function formatKeybind(config: string): string {
   return IS_MAC ? parts.join("") : parts.join("+")
 }
 
+function DialogCommand(props: { options: CommandOption[] }) {
+  const dialog = useDialog()
+  const state = { cleanup: undefined as (() => void) | void, committed: false }
+
+  const handleMove = (option: CommandOption | undefined) => {
+    state.cleanup?.()
+    if (!option) return
+    state.cleanup = option.onHighlight?.()
+  }
+
+  const handleSelect = (option: CommandOption | undefined) => {
+    if (!option) return
+    state.committed = true
+    state.cleanup = undefined
+    dialog.close()
+    option.onSelect?.("palette")
+  }
+
+  onCleanup(() => {
+    if (state.committed) return
+    state.cleanup?.()
+  })
+
+  return (
+    <Dialog title="Commands">
+      <List
+        class="px-2.5"
+        search={{ placeholder: "Search commands", autofocus: true }}
+        emptyMessage="No commands found"
+        items={() => props.options.filter((x) => !x.id.startsWith("suggested.") || !x.disabled)}
+        key={(x) => x?.id}
+        filterKeys={["title", "description", "category"]}
+        groupBy={(x) => x.category ?? ""}
+        onMove={handleMove}
+        onSelect={handleSelect}
+      >
+        {(option) => (
+          <div class="w-full flex items-center justify-between gap-4">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="text-14-regular text-text-strong whitespace-nowrap">{option.title}</span>
+              <Show when={option.description}>
+                <span class="text-14-regular text-text-weak truncate">{option.description}</span>
+              </Show>
+            </div>
+            <Show when={option.keybind}>
+              <span class="text-12-regular text-text-subtle shrink-0">{formatKeybind(option.keybind!)}</span>
+            </Show>
+          </div>
+        )}
+      </List>
+    </Dialog>
+  )
+}
+
+const USED_SHORTCUTS_KEY = "opencode:used-shortcuts"
+
+function getUsedShortcuts(): Set<string> {
+  const stored = localStorage.getItem(USED_SHORTCUTS_KEY)
+  return stored ? new Set(JSON.parse(stored)) : new Set()
+}
+
+function markShortcutUsed(keybind: string) {
+  const used = getUsedShortcuts()
+  used.add(keybind)
+  localStorage.setItem(USED_SHORTCUTS_KEY, JSON.stringify([...used]))
+  window.dispatchEvent(new CustomEvent("shortcut-used", { detail: keybind }))
+}
 export const { use: useCommand, provider: CommandProvider } = createSimpleContext({
   name: "Command",
   init: () => {
@@ -163,7 +232,8 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
     }
 
     const showPalette = () => {
-      run("file.open", "palette")
+      if (dialog.active) return
+      dialog.show(() => <DialogCommand options={options().filter((x) => !x.disabled)} />)
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -172,6 +242,7 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
       const paletteKeybinds = parseKeybind("mod+shift+p")
       if (matchKeybind(paletteKeybinds, event)) {
         event.preventDefault()
+        markShortcutUsed("mod+shift+p")
         showPalette()
         return
       }
@@ -183,6 +254,7 @@ export const { use: useCommand, provider: CommandProvider } = createSimpleContex
         const keybinds = parseKeybind(option.keybind)
         if (matchKeybind(keybinds, event)) {
           event.preventDefault()
+          markShortcutUsed(option.keybind)
           option.onSelect?.("keybind")
           return
         }

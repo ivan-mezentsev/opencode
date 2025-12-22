@@ -73,6 +73,11 @@
     0 0 0 1px var(--border-base, rgba(11, 6, 0, 0.2)), 0 1px 2px -1px rgba(19, 16, 16, 0.25),
     0 1px 2px 0 rgba(19, 16, 16, 0.08), 0 1px 3px 0 rgba(19, 16, 16, 0.12), 0 0 0 2px var(--background-weak, #f1f0f0),
     0 0 0 3px var(--border-selected, rgba(0, 74, 255, 0.99));
+  --shadow-xs-border-interactive:
+    0 0 0 1px var(--border-selected, rgba(0, 74, 255, 0.99)),
+    0 1px 2px -1px rgba(19, 16, 16, 0.25),
+    0 1px 2px 0 rgba(19, 16, 16, 0.08),
+    0 1px 3px 0 rgba(19, 16, 16, 0.12);
   --shadow-lg-border-base:
     0 0 0 1px var(--border-weak-base, rgba(17, 0, 0, 0.12)),
     0 36px 80px 0 rgba(0, 0, 0, 0.03),
@@ -372,10 +377,10 @@
     --surface-raised-stronger-non-alpha: var(--smoke-dark-3);
     --surface-brand-base: var(--yuzu-light-9);
     --surface-brand-hover: var(--yuzu-light-10);
-    --surface-interactive-base: var(--cobalt-light-3);
-    --surface-interactive-hover: var(--cobalt-light-4);
-    --surface-interactive-weak: var(--cobalt-light-2);
-    --surface-interactive-weak-hover: var(--cobalt-light-3);
+    --surface-interactive-base: var(--cobalt-dark-3);
+    --surface-interactive-hover: var(--cobalt-dark-4);
+    --surface-interactive-weak: var(--cobalt-dark-2);
+    --surface-interactive-weak-hover: var(--cobalt-dark-3);
     --surface-success-base: var(--apple-light-3);
     --surface-success-weak: var(--apple-light-2);
     --surface-success-strong: var(--apple-light-9);
@@ -462,12 +467,12 @@
     --border-weak-selected: var(--cobalt-dark-alpha-6);
     --border-weak-disabled: var(--smoke-dark-alpha-6);
     --border-weak-focus: var(--smoke-dark-alpha-8);
-    --border-interactive-base: var(--cobalt-light-7);
-    --border-interactive-hover: var(--cobalt-light-8);
-    --border-interactive-active: var(--cobalt-light-9);
-    --border-interactive-selected: var(--cobalt-light-9);
-    --border-interactive-disabled: var(--smoke-light-8);
-    --border-interactive-focus: var(--cobalt-light-9);
+    --border-interactive-base: var(--cobalt-dark-7);
+    --border-interactive-hover: var(--cobalt-dark-8);
+    --border-interactive-active: var(--cobalt-dark-9);
+    --border-interactive-selected: var(--cobalt-dark-9);
+    --border-interactive-disabled: var(--smoke-dark-8);
+    --border-interactive-focus: var(--cobalt-dark-9);
     --border-success-base: var(--apple-light-6);
     --border-success-hover: var(--apple-light-7);
     --border-success-selected: var(--apple-light-9);
