@@ -8,27 +8,6 @@
   "provider": {
     "opencode": {
       "options": {},
-      "models": {
-        "claude-haiku-4-5": {
-          "variants": {
-            "high": {
-              "disabled": true,
-            },
-            "max": {
-              "disabled": true,
-            },
-          },
-        },
-        "custom-model": {
-          "variants": {
-            "special": {
-              "This is special": {
-                "so": true,
-              },
-            },
-          },
-        },
-      },
     },
   },
   "mcp": {},
