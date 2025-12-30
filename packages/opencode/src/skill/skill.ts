@@ -66,18 +66,6 @@ export namespace Skill {
       }
     }
 
-    // Scan .opencode/skill/ directories
-    for (const dir of await Config.directories()) {
-      for await (const match of OPENCODE_SKILL_GLOB.scan({
-        cwd: dir,
-        absolute: true,
-        onlyFiles: true,
-        followSymlinks: true,
-      })) {
-        await addSkill(match)
-      }
-    }
-
     // Scan .claude/skills/ directories (project-level)
     const claudeDirs = await Array.fromAsync(
       Filesystem.up({
@@ -99,6 +87,18 @@ export namespace Skill {
         onlyFiles: true,
         followSymlinks: true,
         dot: true,
+      })) {
+        await addSkill(match)
+      }
+    }
+
+    // Scan .opencode/skill/ directories
+    for (const dir of await Config.directories()) {
+      for await (const match of OPENCODE_SKILL_GLOB.scan({
+        cwd: dir,
+        absolute: true,
+        onlyFiles: true,
+        followSymlinks: true,
       })) {
         await addSkill(match)
       }
