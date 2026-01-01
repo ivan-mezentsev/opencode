@@ -202,7 +202,7 @@ export const RunCommand = cmd({
             break
           }
 
-          if (event.type === "permission.next.asked") {
+          if (event.type === "permission.asked") {
             const permission = event.properties
             if (permission.sessionID !== sessionID) continue
             const result = await select({

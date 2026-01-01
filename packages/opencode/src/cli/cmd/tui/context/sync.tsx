@@ -97,7 +97,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     sdk.event.listen((e) => {
       const event = e.details
       switch (event.type) {
-        case "permission.next.replied": {
+        case "permission.replied": {
           const requests = store.permission[event.properties.sessionID]
           if (!requests) break
           const match = Binary.search(requests, event.properties.requestID, (r) => r.id)
@@ -112,7 +112,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
 
-        case "permission.next.asked": {
+        case "permission.asked": {
           const request = event.properties
           const requests = store.permission[request.sessionID]
           if (!requests) {

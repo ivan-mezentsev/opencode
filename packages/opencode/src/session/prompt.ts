@@ -646,7 +646,7 @@ export namespace SessionPrompt {
       async ask(req) {
         await PermissionNext.ask({
           ...req,
-          sessionID: input.session.parentID ?? input.session.id,
+          sessionID: input.session.id,
           tool: { messageID: input.processor.message.id, callID: options.toolCallId },
           ruleset: PermissionNext.merge(input.agent.permission, input.session.permission ?? []),
         })
