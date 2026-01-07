@@ -84,7 +84,7 @@ describe("Truncate", () => {
       expect(result.truncated).toBe(true)
       expect(result.outputPath).toBeDefined()
       expect(result.outputPath).toContain("tool_")
-      expect(result.content).toContain("Full output written to:")
+      expect(result.content).toContain("The tool output was too large")
       expect(result.content).toContain("Grep")
 
       const written = await Bun.file(result.outputPath!).text()
