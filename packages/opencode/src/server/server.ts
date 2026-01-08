@@ -48,6 +48,7 @@ import { upgradeWebSocket, websocket } from "hono/bun"
 import { errors } from "./error"
 import { Pty } from "@/pty"
 import { PermissionNext } from "@/permission/next"
+import { Question } from "@/question"
 import { Installation } from "@/installation"
 import { MDNS } from "./mdns"
 import { Worktree } from "../worktree"
@@ -1682,6 +1683,93 @@ export namespace Server {
         async (c) => {
           const permissions = await PermissionNext.list()
           return c.json(permissions)
+        },
+      )
+      .get(
+        "/question",
+        describeRoute({
+          summary: "List pending questions",
+          description: "Get all pending question requests across all sessions.",
+          operationId: "question.list",
+          responses: {
+            200: {
+              description: "List of pending questions",
+              content: {
+                "application/json": {
+                  schema: resolver(Question.Request.array()),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const questions = await Question.list()
+          return c.json(questions)
+        },
+      )
+      .post(
+        "/question/:requestID/reply",
+        describeRoute({
+          summary: "Reply to question request",
+          description: "Provide answers to a question request from the AI assistant.",
+          operationId: "question.reply",
+          responses: {
+            200: {
+              description: "Question answered successfully",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            requestID: z.string(),
+          }),
+        ),
+        validator("json", z.object({ answers: z.array(z.string()) })),
+        async (c) => {
+          const params = c.req.valid("param")
+          const json = c.req.valid("json")
+          await Question.reply({
+            requestID: params.requestID,
+            answers: json.answers,
+          })
+          return c.json(true)
+        },
+      )
+      .post(
+        "/question/:requestID/reject",
+        describeRoute({
+          summary: "Reject question request",
+          description: "Reject a question request from the AI assistant.",
+          operationId: "question.reject",
+          responses: {
+            200: {
+              description: "Question rejected successfully",
+              content: {
+                "application/json": {
+                  schema: resolver(z.boolean()),
+                },
+              },
+            },
+            ...errors(400, 404),
+          },
+        }),
+        validator(
+          "param",
+          z.object({
+            requestID: z.string(),
+          }),
+        ),
+        async (c) => {
+          const params = c.req.valid("param")
+          await Question.reject(params.requestID)
+          return c.json(true)
         },
       )
       .get(
