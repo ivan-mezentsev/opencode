@@ -75,7 +75,6 @@ export namespace Server {
   export const App: () => Hono = lazy(
     () =>
       // TODO: Break server.ts into smaller route files to fix type inference
-      // @ts-expect-error - Hono route chain is too deep for TypeScript's type inference
       app
         .onError((err, c) => {
           log.error("failed", {
