@@ -165,7 +165,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
             />
           </div>
           <Show when={internalFilter()}>
-            <IconButton icon="circle-x" variant="ghost" onClick={() => setInternalFilter("")} />
+            <IconButton icon="circle-x" variant="weak" onClick={() => setInternalFilter("")} />
           </Show>
         </div>
       </Show>
