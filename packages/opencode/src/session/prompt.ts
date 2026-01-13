@@ -55,6 +55,8 @@ IMPORTANT:
 - Complete all necessary research and tool calls BEFORE calling this tool
 - This tool provides your final answer - no further actions are taken after calling it`
 
+const STRUCTURED_OUTPUT_SYSTEM_PROMPT = `IMPORTANT: The user has requested structured output. You MUST use the StructuredOutput tool to provide your final response. Do NOT respond with plain text - you MUST call the StructuredOutput tool with your answer formatted according to the schema.`
+
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
   export const OUTPUT_TOKEN_MAX = Flag.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
@@ -545,12 +547,19 @@ export namespace SessionPrompt {
 
       await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
 
+      // Build system prompt, adding structured output instruction if needed
+      const systemPrompts = [...(await SystemPrompt.environment()), ...(await SystemPrompt.custom())]
+      const outputFormat = lastUser.outputFormat ?? { type: "text" }
+      if (outputFormat.type === "json_schema") {
+        systemPrompts.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
+      }
+
       const result = await processor.process({
         user: lastUser,
         agent,
         abort,
         sessionID,
-        system: [...(await SystemPrompt.environment()), ...(await SystemPrompt.custom())],
+        system: systemPrompts,
         messages: [
           ...MessageV2.toModelMessage(sessionMessages),
           ...(isLastStep
@@ -567,9 +576,13 @@ export namespace SessionPrompt {
       })
 
       // Handle structured output logic
-      const outputFormat = lastUser.outputFormat ?? { type: "text" }
+      // (outputFormat already set above before process call)
 
-      if (result === "stop" && !processor.message.error) {
+      // Check if model finished (finish reason is not "tool-calls" or "unknown")
+      const modelFinished =
+        processor.message.finish && !["tool-calls", "unknown"].includes(processor.message.finish)
+
+      if (modelFinished && !processor.message.error) {
         // Check if structured output was captured successfully
         if (structuredOutput !== undefined) {
           // Store structured output on the final assistant message
