@@ -18,7 +18,6 @@ import { A, useNavigate, useParams } from "@solidjs/router"
 import { useLayout, getAvatarColors, LocalProject } from "@/context/layout"
 import { useGlobalSync } from "@/context/global-sync"
 import { base64Decode, base64Encode } from "@opencode-ai/util/encode"
-import { Avatar } from "@opencode-ai/ui/avatar"
 import { ResizeHandle } from "@opencode-ai/ui/resize-handle"
 import { Button } from "@opencode-ai/ui/button"
 import { Icon } from "@opencode-ai/ui/icon"
@@ -56,6 +55,7 @@ import { DialogSelectProvider } from "@/components/dialog-select-provider"
 import { DialogEditProject } from "@/components/dialog-edit-project"
 import { DialogSelectServer } from "@/components/dialog-select-server"
 import { useCommand, type CommandOption } from "@/context/command"
+import { ProjectIcon } from "@/components/project-icon"
 import { ConstrainDragXAxis } from "@/utils/solid-dnd"
 import { navStart } from "@/utils/perf"
 import { DialogSelectDirectory } from "@/components/dialog-select-directory"
@@ -763,10 +763,12 @@ export default function Layout(props: ParentProps) {
 
     return (
       <div class="relative size-5 shrink-0 rounded-sm">
-        <Avatar
-          fallback={name()}
-          src={props.project.id === opencode ? "https://opencode.ai/favicon.svg" : props.project.icon?.url}
-          {...getAvatarColors(props.project.icon?.color)}
+        <ProjectIcon
+          name={name()}
+          projectId={props.project.id}
+          iconUrl={props.project.icon?.url}
+          iconColor={props.project.icon?.color}
+          size="small"
           class={`size-full ${props.class ?? ""}`}
           style={
             notifications().length > 0 && props.notify ? { "-webkit-mask-image": mask, "mask-image": mask } : undefined
