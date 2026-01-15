@@ -1,8 +1,13 @@
 {
   "nodeModules": {
+<<<<<<< HEAD
     "x86_64-linux": "sha256-H8QVUC5shGI97Ut/wDSYsSuprHpwssJ1MHSHojn+zNI=",
     "aarch64-linux": "sha256-4BlpH/oIXRJEjkQydXDv1oi1Yx7li3k1dKHUy2/Gb10=",
     "aarch64-darwin": "sha256-IOgZ/LP4lvFX3OlalaFuQFYAEFwP+lxz3BRwvu4Hmj4=",
     "x86_64-darwin": "sha256-CHrE2z+LqY2WXTQeGWG5LNMF1AY4UGSwViJAy4IwIVw="
+=======
+    "x86_64-linux": "sha256-9QHW6Ue9VO1VKsu6sg4gRtxgifQGNJlfVVXaa0Uc0XQ=",
+    "aarch64-darwin": "sha256-IOgZ/LP4lvFX3OlalaFuQFYAEFwP+lxz3BRwvu4Hmj4="
+>>>>>>> 6e0a58c50 (Update Nix flake.lock and x86_64-linux hash)
   }
 }
