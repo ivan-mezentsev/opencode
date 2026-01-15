@@ -49,9 +49,16 @@ export const defaultConfig: LightRaysConfig = {
   opacity: 0.35,
 }
 
+export interface LightRaysAnimationState {
+  time: number
+  intensity: number
+  pulseValue: number
+}
+
 interface LightRaysProps {
   config: Accessor<LightRaysConfig>
   class?: string
+  onAnimationFrame?: (state: LightRaysAnimationState) => void
 }
 
 const hexToRgb = (hex: string): [number, number, number] => {
@@ -141,7 +148,6 @@ const WGSL_SHADER = `
 
   @vertex
   fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    // Full-screen triangle
     var positions = array<vec2<f32>, 3>(
       vec2<f32>(-1.0, -1.0),
       vec2<f32>(3.0, -1.0),
@@ -523,7 +529,8 @@ export default function LightRays(props: LightRaysProps) {
         }
 
         const currentConfig = props.config()
-        uniformDataRef.iTime = t * 0.001
+        const timeSeconds = t * 0.001
+        uniformDataRef.iTime = timeSeconds
 
         if (currentConfig.followMouse && currentConfig.mouseInfluence > 0.0) {
           const smoothing = 0.92
@@ -532,6 +539,24 @@ export default function LightRays(props: LightRaysProps) {
           smoothMouseRef.y = smoothMouseRef.y * smoothing + mouseRef.y * (1 - smoothing)
 
           uniformDataRef.mousePos = [smoothMouseRef.x, smoothMouseRef.y]
+        }
+
+        if (props.onAnimationFrame) {
+          const pulseCenter = (currentConfig.pulsatingMin + currentConfig.pulsatingMax) * 0.5
+          const pulseAmplitude = (currentConfig.pulsatingMax - currentConfig.pulsatingMin) * 0.5
+          const pulseValue = currentConfig.pulsating
+            ? pulseCenter + pulseAmplitude * Math.sin(timeSeconds * currentConfig.raysSpeed * 3.0)
+            : 1.0
+
+          const baseIntensity1 = 0.45 + 0.15 * Math.sin(timeSeconds * currentConfig.raysSpeed * 1.5)
+          const baseIntensity2 = 0.3 + 0.2 * Math.cos(timeSeconds * currentConfig.raysSpeed * 1.1)
+          const intensity = (baseIntensity1 + baseIntensity2) * pulseValue
+
+          props.onAnimationFrame({
+            time: timeSeconds,
+            intensity,
+            pulseValue,
+          })
         }
 
         try {

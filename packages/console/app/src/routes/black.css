@@ -185,7 +185,7 @@
 
       h1 {
         color: rgba(255, 255, 255, 0.92);
-        font-size: 18px;
+        font-size: 16px;
         font-style: normal;
         font-weight: 400;
         line-height: 1.45;
@@ -194,11 +194,15 @@
         @media (min-width: 768px) {
           font-size: 20px;
         }
+
+        @media (max-width: 480px) {
+          font-size: 14px;
+        }
       }
 
       p {
         color: rgba(255, 255, 255, 0.59);
-        font-size: 18px;
+        font-size: 16px;
         font-style: normal;
         font-weight: 400;
         line-height: 1.45;
@@ -206,6 +210,10 @@
 
         @media (min-width: 768px) {
           font-size: 20px;
+        }
+
+        @media (max-width: 480px) {
+          font-size: 14px;
         }
       }
     }
@@ -213,30 +221,36 @@
     [data-slot="hero-black"] {
       margin-top: 40px;
       padding: 0 20px;
+      position: relative;
 
       @media (min-width: 768px) {
         margin-top: 60px;
       }
 
       svg {
-        --hero-black-fill-from: hsl(0 0% 100%);
-        --hero-black-fill-to: hsl(0 0% 100% / 0%);
-        --hero-black-stroke-from: hsl(0 0% 100% / 60%);
-        --hero-black-stroke-to: hsl(0 0% 100% / 0%);
-
         width: 100%;
         max-width: 590px;
         height: auto;
-        filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.1));
+        overflow: visible;
+        filter: drop-shadow(0 0 20px rgba(255, 255, 255, calc(0.1 + var(--hero-black-glow-intensity, 0) * 0.15)))
+          drop-shadow(0 -5px 30px rgba(255, 255, 255, calc(var(--hero-black-glow-intensity, 0) * 0.2)));
         mask-image: linear-gradient(to bottom, black, transparent);
         stroke-width: 1.5;
 
-        [data-slot="black-fill"] {
+        [data-slot="black-base"] {
           fill: url(#hero-black-fill-gradient);
+          stroke: url(#hero-black-stroke-gradient);
         }
 
-        [data-slot="black-stroke"] {
-          fill: url(#hero-black-stroke-gradient);
+        [data-slot="black-glow"] {
+          fill: url(#hero-black-top-glow);
+          pointer-events: none;
+        }
+
+        [data-slot="black-shimmer"] {
+          fill: url(#hero-black-shimmer-gradient);
+          pointer-events: none;
+          mix-blend-mode: overlay;
         }
       }
     }
@@ -348,13 +362,18 @@
         gap: 12px;
         padding: 24px;
         border: 1px solid rgba(255, 255, 255, 0.17);
-        background: black;
+        background-color: rgba(0, 0, 0, 0.75);
+        backdrop-filter: blur(4px);
         background-clip: padding-box;
         border-radius: 4px;
         text-decoration: none;
         transition: border-color 0.15s ease;
         cursor: pointer;
         text-align: left;
+
+        @media (max-width: 480px) {
+          padding: 16px;
+        }
 
         &:hover:not(:active) {
           border-color: rgba(255, 255, 255, 0.35);
@@ -400,6 +419,15 @@
         width: 100%;
         max-width: 660px;
         margin: 0 auto;
+        position: relative;
+        background-color: rgba(0, 0, 0, 0.75);
+        backdrop-filter: blur(4px);
+        z-index: 1;
+
+        @media (max-width: 480px) {
+          margin: 0 20px;
+          width: calc(100% - 40px);
+        }
       }
 
       [data-slot="selected-card"] {
@@ -458,13 +486,16 @@
             line-height: 1.5;
             padding-left: 16px;
             position: relative;
-            white-space: nowrap;
 
             &::before {
               content: "▪";
               position: absolute;
               left: 0;
               color: rgba(255, 255, 255, 0.39);
+            }
+
+            @media (max-width: 768px) {
+              font-size: 12px;
             }
           }
         }
