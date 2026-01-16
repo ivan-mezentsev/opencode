@@ -6,6 +6,7 @@ import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
 import { proxy } from "hono/proxy"
+import { basicAuth } from "hono/basic-auth"
 import z from "zod"
 import { Provider } from "../provider/provider"
 import { NamedError } from "@opencode-ai/util/error"
@@ -17,6 +18,7 @@ import { Vcs } from "../project/vcs"
 import { Agent } from "../agent/agent"
 import { Skill } from "../skill/skill"
 import { Auth } from "../auth"
+import { Flag } from "../flag/flag"
 import { Command } from "../command"
 import { Global } from "../global"
 import { ProjectRoutes } from "./routes/project"
@@ -32,6 +34,7 @@ import { InstanceBootstrap } from "../project/bootstrap"
 import { Storage } from "../storage/storage"
 import type { ContentfulStatusCode } from "hono/utils/http-status"
 import { websocket } from "hono/bun"
+import { HTTPException } from "hono/http-exception"
 import { errors } from "./error"
 import { QuestionRoutes } from "./routes/question"
 import { PermissionRoutes } from "./routes/permission"
@@ -59,6 +62,7 @@ export namespace Server {
   const app = new Hono()
   export const App: () => Hono = lazy(
     () =>
+      // TODO: Break server.ts into smaller route files to fix type inference
       app
         .onError((err, c) => {
           log.error("failed", {
@@ -72,10 +76,17 @@ export namespace Server {
             else status = 500
             return c.json(err.toObject(), { status })
           }
+          if (err instanceof HTTPException) return err.getResponse()
           const message = err instanceof Error && err.stack ? err.stack : err.toString()
           return c.json(new NamedError.Unknown({ message }).toObject(), {
             status: 500,
           })
+        })
+        .use((c, next) => {
+          const password = Flag.OPENCODE_SERVER_PASSWORD
+          if (!password) return next()
+          const username = Flag.OPENCODE_SERVER_USERNAME ?? "opencode"
+          return basicAuth({ username, password })(c, next)
         })
         .use(async (c, next) => {
           const skipLogging = c.req.path === "/log"
@@ -500,6 +511,10 @@ export namespace Server {
               host: "app.opencode.ai",
             },
           })
+          response.headers.set(
+            "Content-Security-Policy",
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'",
+          )
           return response
         }) as unknown as Hono,
   )
