@@ -381,6 +381,160 @@ test("parseModel handles model IDs with slashes", () => {
   expect(result.modelID).toBe("anthropic/claude-3-opus")
 })
 
+test("resolveModelBaseURL returns empty when url missing", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = { api: { url: "" } } as Provider.Model
+      expect(Provider.resolveModelBaseURL(model, {})).toBe("")
+    },
+  })
+})
+
+test("resolveModelBaseURL returns template when no placeholders", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = { api: { url: "https://api.example.com/v1" } } as Provider.Model
+      expect(Provider.resolveModelBaseURL(model, {})).toBe("https://api.example.com/v1")
+    },
+  })
+})
+
+test("resolveModelBaseURL replaces placeholders from env", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    init: async () => {
+      Env.set("CUSTOM_HOST", "env.example.com")
+    },
+    fn: async () => {
+      const model = { api: { url: "https://{{CUSTOM_HOST}}/v1" } } as Provider.Model
+      expect(Provider.resolveModelBaseURL(model, {})).toBe("https://env.example.com/v1")
+      Env.remove("CUSTOM_HOST")
+    },
+  })
+})
+
+test("resolveModelBaseURL falls back to options when env missing", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = { api: { url: "https://{{HOST}}/v1" } } as Provider.Model
+      expect(Provider.resolveModelBaseURL(model, { HOST: "options.example.com" })).toBe(
+        "https://options.example.com/v1",
+      )
+    },
+  })
+})
+
+test("resolveModelBaseURL chooses first non-empty key", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = { api: { url: "https://{{PRIMARY|SECONDARY}}/v1" } } as Provider.Model
+      const options = {
+        PRIMARY: "",
+        SECONDARY: "fallback.example.com",
+      }
+      expect(Provider.resolveModelBaseURL(model, options)).toBe("https://fallback.example.com/v1")
+    },
+  })
+})
+
+test("resolveModelBaseURL keeps unresolved placeholders", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = { api: { url: "https://{{MISSING}}/v1" } } as Provider.Model
+      expect(Provider.resolveModelBaseURL(model, {})).toBe("https://{{MISSING}}/v1")
+    },
+  })
+})
+
+test("resolveModelBaseURL replaces multiple placeholders", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify({
+          $schema: "https://opencode.ai/config.json",
+        }),
+      )
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const model = { api: { url: "https://{{HOST}}/{{VERSION}}" } } as Provider.Model
+      const options = {
+        HOST: "multi.example.com",
+        VERSION: "v1",
+      }
+      expect(Provider.resolveModelBaseURL(model, options)).toBe("https://multi.example.com/v1")
+    },
+  })
+})
+
 test("defaultModel returns first available model when no config set", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {

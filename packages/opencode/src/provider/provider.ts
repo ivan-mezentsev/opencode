@@ -960,7 +960,7 @@ export namespace Provider {
     return state().then((state) => state.providers)
   }
 
-  function resolveModelBaseURL(model: Model, options: Record<string, any>): string {
+  export function resolveModelBaseURL(model: Model, options: Record<string, any>): string {
     const template = model.api?.url ?? ""
     if (!template) return ""
     const matches = [...template.matchAll(/{{([^}]+)}}/g)]
