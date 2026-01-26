@@ -1719,7 +1719,7 @@ function Read(props: ToolProps<typeof ReadTool>) {
       <Show when={loaded()}>
         <box paddingLeft={3}>
           <text paddingLeft={3} fg={theme.textMuted}>
-            ↳ Loaded {normalizePath(loaded()!)}
+            ↳ Loaded {normalizePath(loaded())}
           </text>
         </box>
       </Show>
