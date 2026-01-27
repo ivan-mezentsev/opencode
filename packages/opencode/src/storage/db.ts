@@ -1,7 +1,7 @@
 import { Database as BunDatabase } from "bun:sqlite"
 import { drizzle, type SQLiteBunDatabase } from "drizzle-orm/bun-sqlite"
 import { migrate } from "drizzle-orm/bun-sqlite/migrator"
-import { integer, type SQLiteTransaction } from "drizzle-orm/sqlite-core"
+import { type SQLiteTransaction } from "drizzle-orm/sqlite-core"
 export * from "drizzle-orm"
 import { Context } from "../util/context"
 import { lazy } from "../util/lazy"
@@ -136,14 +136,5 @@ export namespace Database {
       }
       throw err
     }
-  }
-
-  export const Timestamps = {
-    time_created: integer()
-      .notNull()
-      .$default(() => Date.now()),
-    time_updated: integer()
-      .notNull()
-      .$onUpdate(() => Date.now()),
   }
 }

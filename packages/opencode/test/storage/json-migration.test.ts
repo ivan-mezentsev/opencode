@@ -11,6 +11,7 @@ import { Global } from "../../src/global"
 import { ProjectTable } from "../../src/project/project.sql"
 import { Project } from "../../src/project/project"
 import { SessionTable, MessageTable, PartTable, TodoTable, PermissionTable } from "../../src/session/session.sql"
+import { SessionShareTable } from "../../src/share/share.sql"
 
 // Test fixtures
 const fixtures = {
@@ -239,5 +240,126 @@ describe("JSON to SQLite migration", () => {
     const db = drizzle({ client: sqlite })
     const projects = db.select().from(ProjectTable).all()
     expect(projects.length).toBe(1) // Still only 1 due to onConflictDoNothing
+  })
+
+  test("migrates todos", async () => {
+    // First create the project and session
+    await Bun.write(
+      path.join(storageDir, "project", "proj_test123abc.json"),
+      JSON.stringify({
+        id: "proj_test123abc",
+        worktree: "/",
+        time: { created: Date.now(), updated: Date.now() },
+        sandboxes: [],
+      }),
+    )
+    await Bun.write(
+      path.join(storageDir, "session", "proj_test123abc", "ses_test456def.json"),
+      JSON.stringify({ ...fixtures.session }),
+    )
+
+    // Create todo file (named by sessionID, contains array of todos)
+    await Bun.write(
+      path.join(storageDir, "todo", "ses_test456def.json"),
+      JSON.stringify([
+        {
+          id: "todo_1",
+          content: "First todo",
+          status: "pending",
+          priority: "high",
+        },
+        {
+          id: "todo_2",
+          content: "Second todo",
+          status: "completed",
+          priority: "medium",
+        },
+      ]),
+    )
+
+    const stats = await JsonMigration.run(sqlite)
+
+    expect(stats?.todos).toBe(2)
+
+    const db = drizzle({ client: sqlite })
+    const todos = db.select().from(TodoTable).all()
+    expect(todos.length).toBe(2)
+    expect(todos[0].id).toBe("todo_1")
+    expect(todos[0].content).toBe("First todo")
+    expect(todos[0].status).toBe("pending")
+    expect(todos[0].priority).toBe("high")
+    expect(todos[0].position).toBe(0)
+    expect(todos[1].id).toBe("todo_2")
+    expect(todos[1].position).toBe(1)
+  })
+
+  test("migrates permissions", async () => {
+    // First create the project
+    await Bun.write(
+      path.join(storageDir, "project", "proj_test123abc.json"),
+      JSON.stringify({
+        id: "proj_test123abc",
+        worktree: "/",
+        time: { created: Date.now(), updated: Date.now() },
+        sandboxes: [],
+      }),
+    )
+
+    // Create permission file (named by projectID, contains array of rules)
+    const permissionData = [
+      { permission: "file.read", pattern: "/test/file1.ts", action: "allow" as const },
+      { permission: "file.write", pattern: "/test/file2.ts", action: "ask" as const },
+      { permission: "command.run", pattern: "npm install", action: "deny" as const },
+    ]
+    await Bun.write(path.join(storageDir, "permission", "proj_test123abc.json"), JSON.stringify(permissionData))
+
+    const stats = await JsonMigration.run(sqlite)
+
+    expect(stats?.permissions).toBe(1)
+
+    const db = drizzle({ client: sqlite })
+    const permissions = db.select().from(PermissionTable).all()
+    expect(permissions.length).toBe(1)
+    expect(permissions[0].project_id).toBe("proj_test123abc")
+    expect(permissions[0].data).toEqual(permissionData)
+  })
+
+  test("migrates session shares", async () => {
+    // First create the project and session
+    await Bun.write(
+      path.join(storageDir, "project", "proj_test123abc.json"),
+      JSON.stringify({
+        id: "proj_test123abc",
+        worktree: "/",
+        time: { created: Date.now(), updated: Date.now() },
+        sandboxes: [],
+      }),
+    )
+    await Bun.write(
+      path.join(storageDir, "session", "proj_test123abc", "ses_test456def.json"),
+      JSON.stringify({ ...fixtures.session }),
+    )
+
+    // Create session share file (named by sessionID)
+    await Bun.write(
+      path.join(storageDir, "session_share", "ses_test456def.json"),
+      JSON.stringify({
+        id: "share_123",
+        secret: "supersecretkey",
+        url: "https://share.example.com/ses_test456def",
+      }),
+    )
+
+    const stats = await JsonMigration.run(sqlite)
+
+    expect(stats?.shares).toBe(1)
+
+    const db = drizzle({ client: sqlite })
+    const shares = db.select().from(SessionShareTable).all()
+    expect(shares.length).toBe(1)
+    expect(shares[0].session_id).toBe("ses_test456def")
+    expect(shares[0].id).toBe("share_123")
+    expect(shares[0].secret).toBe("supersecretkey")
+    expect(shares[0].url).toBe("https://share.example.com/ses_test456def")
   })
 })
