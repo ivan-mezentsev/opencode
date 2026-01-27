@@ -11,8 +11,8 @@ import { Identifier } from "../id/id"
 import { Installation } from "../installation"
 
 import { Database, NotFoundError, eq } from "../storage/db"
-import { SessionTable, MessageTable, PartTable, SessionDiffTable } from "./session.sql"
-import { ShareTable } from "../share/share.sql"
+import { SessionTable, MessageTable, PartTable } from "./session.sql"
+import { Storage } from "@/storage/storage"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
 import { Instance } from "../project/instance"
@@ -152,16 +152,6 @@ export namespace Session {
       ref: "Session",
     })
   export type Info = z.output<typeof Info>
-
-  export const ShareInfo = z
-    .object({
-      secret: z.string(),
-      url: z.string(),
-    })
-    .meta({
-      ref: "SessionShare",
-    })
-  export type ShareInfo = z.output<typeof ShareInfo>
 
   export const Event = {
     Created: BusEvent.define(
@@ -321,11 +311,6 @@ export namespace Session {
     const row = Database.use((db) => db.select().from(SessionTable).where(eq(SessionTable.id, id)).get())
     if (!row) throw new NotFoundError({ message: `Session not found: ${id}` })
     return fromRow(row)
-  })
-
-  export const getShare = fn(Identifier.schema("session"), async (id) => {
-    const row = Database.use((db) => db.select().from(ShareTable).where(eq(ShareTable.session_id, id)).get())
-    return row?.data
   })
 
   export const share = fn(Identifier.schema("session"), async (id) => {
@@ -498,10 +483,11 @@ export namespace Session {
   )
 
   export const diff = fn(Identifier.schema("session"), async (sessionID) => {
-    const row = Database.use((db) =>
-      db.select().from(SessionDiffTable).where(eq(SessionDiffTable.session_id, sessionID)).get(),
-    )
-    return row?.data ?? []
+    try {
+      return await Storage.read<Snapshot.FileDiff[]>(["session_diff", sessionID])
+    } catch {
+      return []
+    }
   })
 
   export const messages = fn(

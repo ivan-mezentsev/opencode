@@ -1,51 +1,70 @@
 import { Database } from "bun:sqlite"
 import { drizzle } from "drizzle-orm/bun-sqlite"
-import { eq } from "drizzle-orm"
 import { Global } from "../global"
 import { Log } from "../util/log"
 import { ProjectTable } from "../project/project.sql"
-import {
-  SessionTable,
-  MessageTable,
-  PartTable,
-  SessionDiffTable,
-  TodoTable,
-  PermissionTable,
-} from "../session/session.sql"
-import { SessionShareTable, ShareTable } from "../share/share.sql"
+import { SessionTable, MessageTable, PartTable, TodoTable, PermissionTable } from "../session/session.sql"
+import { SessionShareTable } from "../share/share.sql"
 import path from "path"
 
-const log = Log.create({ service: "json-migration" })
+export namespace JsonMigration {
+  const log = Log.create({ service: "json-migration" })
 
-export async function migrateFromJson(sqlite: Database, customStorageDir?: string) {
-  const storageDir = customStorageDir ?? path.join(Global.Path.data, "storage")
+  export async function run(sqlite: Database) {
+    const storageDir = path.join(Global.Path.data, "storage")
 
-  log.info("starting json to sqlite migration", { storageDir })
+    log.info("starting json to sqlite migration", { storageDir })
 
-  const db = drizzle({ client: sqlite })
-  const stats = {
-    projects: 0,
-    sessions: 0,
-    messages: 0,
-    parts: 0,
-    diffs: 0,
-    todos: 0,
-    permissions: 0,
-    shares: 0,
-    errors: [] as string[],
-  }
+    const db = drizzle({ client: sqlite })
+    const stats = {
+      projects: 0,
+      sessions: 0,
+      messages: 0,
+      parts: 0,
+      todos: 0,
+      permissions: 0,
+      shares: 0,
+      errors: [] as string[],
+    }
 
-  // Migrate projects first (no FK deps)
-  const projectGlob = new Bun.Glob("project/*.json")
-  for await (const file of projectGlob.scan({ cwd: storageDir, absolute: true })) {
-    try {
-      const data = await Bun.file(file).json()
-      if (!data.id) {
-        stats.errors.push(`project missing id: ${file}`)
-        continue
+    const limit = 32
+
+    async function list(pattern: string) {
+      const items: string[] = []
+      const scan = new Bun.Glob(pattern)
+      for await (const file of scan.scan({ cwd: storageDir, absolute: true })) {
+        items.push(file)
       }
-      db.insert(ProjectTable)
-        .values({
+      return items
+    }
+
+    async function read(files: string[]) {
+      const results = await Promise.allSettled(files.map((file) => Bun.file(file).json()))
+      const items: { file: string; data: any }[] = []
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i]
+        const file = files[i]
+        if (result.status === "fulfilled") {
+          items.push({ file, data: result.value })
+          continue
+        }
+        stats.errors.push(`failed to read ${file}: ${result.reason}`)
+      }
+      return items
+    }
+
+    // Migrate projects first (no FK deps)
+    const projectFiles = await list("project/*.json")
+    for (let i = 0; i < projectFiles.length; i += limit) {
+      const batch = await read(projectFiles.slice(i, i + limit))
+      const values = [] as any[]
+      for (const item of batch) {
+        const data = item.data
+        if (!data?.id) {
+          stats.errors.push(`project missing id: ${item.file}`)
+          continue
+        }
+        values.push({
           id: data.id,
           worktree: data.worktree ?? "/",
           vcs: data.vcs,
@@ -57,32 +76,36 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
           time_initialized: data.time?.initialized,
           sandboxes: data.sandboxes ?? [],
         })
-        .onConflictDoNothing()
-        .run()
-      stats.projects++
-    } catch (e) {
-      stats.errors.push(`failed to migrate project ${file}: ${e}`)
+      }
+      if (values.length === 0) continue
+      try {
+        db.insert(ProjectTable).values(values).onConflictDoNothing().run()
+        stats.projects += values.length
+      } catch (e) {
+        stats.errors.push(`failed to migrate project batch: ${e}`)
+      }
     }
-  }
-  log.info("migrated projects", { count: stats.projects })
+    log.info("migrated projects", { count: stats.projects })
 
-  // Migrate sessions (depends on projects)
-  const sessionGlob = new Bun.Glob("session/*/*.json")
-  for await (const file of sessionGlob.scan({ cwd: storageDir, absolute: true })) {
-    try {
-      const data = await Bun.file(file).json()
-      if (!data.id || !data.projectID) {
-        stats.errors.push(`session missing id or projectID: ${file}`)
-        continue
-      }
-      // Check if project exists (skip orphaned sessions)
-      const project = db.select().from(ProjectTable).where(eq(ProjectTable.id, data.projectID)).get()
-      if (!project) {
-        log.warn("skipping orphaned session", { sessionID: data.id, projectID: data.projectID })
-        continue
-      }
-      db.insert(SessionTable)
-        .values({
+    const projectRows = db.select({ id: ProjectTable.id }).from(ProjectTable).all()
+    const projectIds = new Set(projectRows.map((item) => item.id))
+
+    // Migrate sessions (depends on projects)
+    const sessionFiles = await list("session/*/*.json")
+    for (let i = 0; i < sessionFiles.length; i += limit) {
+      const batch = await read(sessionFiles.slice(i, i + limit))
+      const values = [] as any[]
+      for (const item of batch) {
+        const data = item.data
+        if (!data?.id || !data?.projectID) {
+          stats.errors.push(`session missing id or projectID: ${item.file}`)
+          continue
+        }
+        if (!projectIds.has(data.projectID)) {
+          log.warn("skipping orphaned session", { sessionID: data.id, projectID: data.projectID })
+          continue
+        }
+        values.push({
           id: data.id,
           project_id: data.projectID,
           parent_id: data.parentID ?? null,
@@ -105,181 +128,199 @@ export async function migrateFromJson(sqlite: Database, customStorageDir?: strin
           time_compacting: data.time?.compacting ?? null,
           time_archived: data.time?.archived ?? null,
         })
-        .onConflictDoNothing()
-        .run()
-      stats.sessions++
-    } catch (e) {
-      stats.errors.push(`failed to migrate session ${file}: ${e}`)
-    }
-  }
-  log.info("migrated sessions", { count: stats.sessions })
-
-  // Migrate messages (depends on sessions)
-  const messageGlob = new Bun.Glob("message/*/*.json")
-  for await (const file of messageGlob.scan({ cwd: storageDir, absolute: true })) {
-    try {
-      const data = await Bun.file(file).json()
-      if (!data.id || !data.sessionID) {
-        stats.errors.push(`message missing id or sessionID: ${file}`)
-        continue
       }
-      // Check if session exists
-      const session = db.select().from(SessionTable).where(eq(SessionTable.id, data.sessionID)).get()
-      if (!session) {
-        log.warn("skipping orphaned message", { messageID: data.id, sessionID: data.sessionID })
-        continue
+      if (values.length === 0) continue
+      try {
+        db.insert(SessionTable).values(values).onConflictDoNothing().run()
+        stats.sessions += values.length
+      } catch (e) {
+        stats.errors.push(`failed to migrate session batch: ${e}`)
       }
-      db.insert(MessageTable)
-        .values({
-          id: data.id,
-          session_id: data.sessionID,
-          created_at: data.time?.created ?? Date.now(),
-          data,
-        })
-        .onConflictDoNothing()
-        .run()
-      stats.messages++
-    } catch (e) {
-      stats.errors.push(`failed to migrate message ${file}: ${e}`)
     }
-  }
-  log.info("migrated messages", { count: stats.messages })
+    log.info("migrated sessions", { count: stats.sessions })
 
-  // Migrate parts (depends on messages)
-  const partGlob = new Bun.Glob("part/*/*.json")
-  for await (const file of partGlob.scan({ cwd: storageDir, absolute: true })) {
-    try {
-      const data = await Bun.file(file).json()
-      if (!data.id || !data.messageID || !data.sessionID) {
-        stats.errors.push(`part missing id, messageID, or sessionID: ${file}`)
-        continue
+    const sessionRows = db.select({ id: SessionTable.id }).from(SessionTable).all()
+    const sessionIds = new Set(sessionRows.map((item) => item.id))
+
+    // Migrate messages + parts per session
+    const sessionList = Array.from(sessionIds)
+    for (let i = 0; i < sessionList.length; i += limit) {
+      const batch = sessionList.slice(i, i + limit)
+      await Promise.allSettled(
+        batch.map(async (sessionID) => {
+          const messageFiles = await list(`message/${sessionID}/*.json`)
+          const messageIds = new Set<string>()
+          for (let j = 0; j < messageFiles.length; j += limit) {
+            const chunk = await read(messageFiles.slice(j, j + limit))
+            const values = [] as any[]
+            for (const item of chunk) {
+              const data = item.data
+              if (!data?.id) {
+                stats.errors.push(`message missing id: ${item.file}`)
+                continue
+              }
+              values.push({
+                id: data.id,
+                session_id: sessionID,
+                created_at: data.time?.created ?? Date.now(),
+                data,
+              })
+              messageIds.add(data.id)
+            }
+            if (values.length === 0) continue
+            try {
+              db.insert(MessageTable).values(values).onConflictDoNothing().run()
+              stats.messages += values.length
+            } catch (e) {
+              stats.errors.push(`failed to migrate message batch: ${e}`)
+            }
+          }
+
+          const messageList = Array.from(messageIds)
+          for (let j = 0; j < messageList.length; j += limit) {
+            const messageBatch = messageList.slice(j, j + limit)
+            await Promise.allSettled(
+              messageBatch.map(async (messageID) => {
+                const partFiles = await list(`part/${messageID}/*.json`)
+                for (let k = 0; k < partFiles.length; k += limit) {
+                  const chunk = await read(partFiles.slice(k, k + limit))
+                  const values = [] as any[]
+                  for (const item of chunk) {
+                    const data = item.data
+                    if (!data?.id || !data?.messageID) {
+                      stats.errors.push(`part missing id or messageID: ${item.file}`)
+                      continue
+                    }
+                    values.push({
+                      id: data.id,
+                      message_id: data.messageID,
+                      session_id: sessionID,
+                      data,
+                    })
+                  }
+                  if (values.length === 0) continue
+                  try {
+                    db.insert(PartTable).values(values).onConflictDoNothing().run()
+                    stats.parts += values.length
+                  } catch (e) {
+                    stats.errors.push(`failed to migrate part batch: ${e}`)
+                  }
+                }
+              }),
+            )
+          }
+        }),
+      )
+    }
+    log.info("migrated messages", { count: stats.messages })
+    log.info("migrated parts", { count: stats.parts })
+
+    // Migrate todos
+    const todoFiles = await list("todo/*.json")
+    for (let i = 0; i < todoFiles.length; i += limit) {
+      const batch = await read(todoFiles.slice(i, i + limit))
+      const values = [] as any[]
+      for (const item of batch) {
+        const data = item.data
+        const sessionID = path.basename(item.file, ".json")
+        if (!sessionIds.has(sessionID)) {
+          log.warn("skipping orphaned todo", { sessionID })
+          continue
+        }
+        if (!Array.isArray(data)) {
+          stats.errors.push(`todo not an array: ${item.file}`)
+          continue
+        }
+        for (let position = 0; position < data.length; position++) {
+          const todo = data[position]
+          if (!todo?.id || !todo?.content || !todo?.status || !todo?.priority) continue
+          values.push({
+            session_id: sessionID,
+            id: todo.id,
+            content: todo.content,
+            status: todo.status,
+            priority: todo.priority,
+            position,
+          })
+        }
       }
-      // Check if message exists
-      const message = db.select().from(MessageTable).where(eq(MessageTable.id, data.messageID)).get()
-      if (!message) {
-        log.warn("skipping orphaned part", { partID: data.id, messageID: data.messageID })
-        continue
+      if (values.length === 0) continue
+      try {
+        db.insert(TodoTable).values(values).onConflictDoNothing().run()
+        stats.todos += values.length
+      } catch (e) {
+        stats.errors.push(`failed to migrate todo batch: ${e}`)
       }
-      db.insert(PartTable)
-        .values({
-          id: data.id,
-          message_id: data.messageID,
-          session_id: data.sessionID,
-          data,
-        })
-        .onConflictDoNothing()
-        .run()
-      stats.parts++
-    } catch (e) {
-      stats.errors.push(`failed to migrate part ${file}: ${e}`)
     }
-  }
-  log.info("migrated parts", { count: stats.parts })
+    log.info("migrated todos", { count: stats.todos })
 
-  // Migrate session diffs
-  const diffGlob = new Bun.Glob("session_diff/*.json")
-  for await (const file of diffGlob.scan({ cwd: storageDir, absolute: true })) {
-    try {
-      const data = await Bun.file(file).json()
-      const sessionID = path.basename(file, ".json")
-      // Check if session exists
-      const session = db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get()
-      if (!session) {
-        log.warn("skipping orphaned session_diff", { sessionID })
-        continue
+    // Migrate permissions
+    const permFiles = await list("permission/*.json")
+    for (let i = 0; i < permFiles.length; i += limit) {
+      const batch = await read(permFiles.slice(i, i + limit))
+      const values = [] as any[]
+      for (const item of batch) {
+        const data = item.data
+        const projectID = path.basename(item.file, ".json")
+        if (!projectIds.has(projectID)) {
+          log.warn("skipping orphaned permission", { projectID })
+          continue
+        }
+        values.push({ project_id: projectID, data })
       }
-      db.insert(SessionDiffTable).values({ session_id: sessionID, data }).onConflictDoNothing().run()
-      stats.diffs++
-    } catch (e) {
-      stats.errors.push(`failed to migrate session_diff ${file}: ${e}`)
-    }
-  }
-  log.info("migrated session diffs", { count: stats.diffs })
-
-  // Migrate todos
-  const todoGlob = new Bun.Glob("todo/*.json")
-  for await (const file of todoGlob.scan({ cwd: storageDir, absolute: true })) {
-    try {
-      const data = await Bun.file(file).json()
-      const sessionID = path.basename(file, ".json")
-      const session = db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get()
-      if (!session) {
-        log.warn("skipping orphaned todo", { sessionID })
-        continue
+      if (values.length === 0) continue
+      try {
+        db.insert(PermissionTable).values(values).onConflictDoNothing().run()
+        stats.permissions += values.length
+      } catch (e) {
+        stats.errors.push(`failed to migrate permission batch: ${e}`)
       }
-      db.insert(TodoTable).values({ session_id: sessionID, data }).onConflictDoNothing().run()
-      stats.todos++
-    } catch (e) {
-      stats.errors.push(`failed to migrate todo ${file}: ${e}`)
     }
-  }
-  log.info("migrated todos", { count: stats.todos })
+    log.info("migrated permissions", { count: stats.permissions })
 
-  // Migrate permissions
-  const permGlob = new Bun.Glob("permission/*.json")
-  for await (const file of permGlob.scan({ cwd: storageDir, absolute: true })) {
-    try {
-      const data = await Bun.file(file).json()
-      const projectID = path.basename(file, ".json")
-      const project = db.select().from(ProjectTable).where(eq(ProjectTable.id, projectID)).get()
-      if (!project) {
-        log.warn("skipping orphaned permission", { projectID })
-        continue
+    // Migrate session shares
+    const shareFiles = await list("session_share/*.json")
+    for (let i = 0; i < shareFiles.length; i += limit) {
+      const batch = await read(shareFiles.slice(i, i + limit))
+      const values = [] as any[]
+      for (const item of batch) {
+        const data = item.data
+        const sessionID = path.basename(item.file, ".json")
+        if (!sessionIds.has(sessionID)) {
+          log.warn("skipping orphaned session_share", { sessionID })
+          continue
+        }
+        if (!data?.id || !data?.secret || !data?.url) {
+          stats.errors.push(`session_share missing id/secret/url: ${item.file}`)
+          continue
+        }
+        values.push({ session_id: sessionID, id: data.id, secret: data.secret, url: data.url })
       }
-      db.insert(PermissionTable).values({ project_id: projectID, data }).onConflictDoNothing().run()
-      stats.permissions++
-    } catch (e) {
-      stats.errors.push(`failed to migrate permission ${file}: ${e}`)
-    }
-  }
-  log.info("migrated permissions", { count: stats.permissions })
-
-  // Migrate session shares
-  const shareGlob = new Bun.Glob("session_share/*.json")
-  for await (const file of shareGlob.scan({ cwd: storageDir, absolute: true })) {
-    try {
-      const data = await Bun.file(file).json()
-      const sessionID = path.basename(file, ".json")
-      const session = db.select().from(SessionTable).where(eq(SessionTable.id, sessionID)).get()
-      if (!session) {
-        log.warn("skipping orphaned session_share", { sessionID })
-        continue
+      if (values.length === 0) continue
+      try {
+        db.insert(SessionShareTable).values(values).onConflictDoNothing().run()
+        stats.shares += values.length
+      } catch (e) {
+        stats.errors.push(`failed to migrate session_share batch: ${e}`)
       }
-      db.insert(SessionShareTable).values({ session_id: sessionID, data }).onConflictDoNothing().run()
-      stats.shares++
-    } catch (e) {
-      stats.errors.push(`failed to migrate session_share ${file}: ${e}`)
     }
-  }
-  log.info("migrated session shares", { count: stats.shares })
+    log.info("migrated session shares", { count: stats.shares })
 
-  // Migrate shares (downloaded shared sessions, no FK)
-  const share2Glob = new Bun.Glob("share/*.json")
-  for await (const file of share2Glob.scan({ cwd: storageDir, absolute: true })) {
-    try {
-      const data = await Bun.file(file).json()
-      const sessionID = path.basename(file, ".json")
-      db.insert(ShareTable).values({ session_id: sessionID, data }).onConflictDoNothing().run()
-    } catch (e) {
-      stats.errors.push(`failed to migrate share ${file}: ${e}`)
+    log.info("json migration complete", {
+      projects: stats.projects,
+      sessions: stats.sessions,
+      messages: stats.messages,
+      parts: stats.parts,
+      todos: stats.todos,
+      permissions: stats.permissions,
+      shares: stats.shares,
+      errorCount: stats.errors.length,
+    })
+
+    if (stats.errors.length > 0) {
+      log.warn("migration errors", { errors: stats.errors.slice(0, 20) })
     }
+
+    return stats
   }
-
-  log.info("json migration complete", {
-    projects: stats.projects,
-    sessions: stats.sessions,
-    messages: stats.messages,
-    parts: stats.parts,
-    diffs: stats.diffs,
-    todos: stats.todos,
-    permissions: stats.permissions,
-    shares: stats.shares,
-    errorCount: stats.errors.length,
-  })
-
-  if (stats.errors.length > 0) {
-    log.warn("migration errors", { errors: stats.errors.slice(0, 20) })
-  }
-
-  return stats
 }

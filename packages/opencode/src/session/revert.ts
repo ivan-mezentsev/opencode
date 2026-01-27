@@ -5,7 +5,8 @@ import { MessageV2 } from "./message-v2"
 import { Session } from "."
 import { Log } from "../util/log"
 import { Database, eq } from "../storage/db"
-import { SessionDiffTable, MessageTable, PartTable } from "./session.sql"
+import { MessageTable, PartTable } from "./session.sql"
+import { Storage } from "@/storage/storage"
 import { Bus } from "../bus"
 import { SessionPrompt } from "./prompt"
 import { SessionSummary } from "./summary"
@@ -60,13 +61,7 @@ export namespace SessionRevert {
       if (revert.snapshot) revert.diff = await Snapshot.diff(revert.snapshot)
       const rangeMessages = all.filter((msg) => msg.info.id >= revert!.messageID)
       const diffs = await SessionSummary.computeDiff({ messages: rangeMessages })
-      Database.use((db) =>
-        db
-          .insert(SessionDiffTable)
-          .values({ session_id: input.sessionID, data: diffs })
-          .onConflictDoUpdate({ target: SessionDiffTable.session_id, set: { data: diffs } })
-          .run(),
-      )
+      await Storage.write(["session_diff", input.sessionID], diffs)
       Bus.publish(Session.Event.Diff, {
         sessionID: input.sessionID,
         diff: diffs,

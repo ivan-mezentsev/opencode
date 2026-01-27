@@ -7,11 +7,12 @@ import { Context } from "../util/context"
 import { lazy } from "../util/lazy"
 import { Global } from "../global"
 import { Log } from "../util/log"
-import { migrateFromJson } from "./json-migration"
 import { NamedError } from "@opencode-ai/util/error"
 import z from "zod"
 import path from "path"
-import { readFileSync } from "fs"
+import { readFileSync, readdirSync } from "fs"
+import fs from "fs/promises"
+import { Instance } from "@/project/instance"
 
 declare const OPENCODE_MIGRATIONS: { sql: string; timestamp: number }[] | undefined
 
@@ -31,21 +32,39 @@ export namespace Database {
 
   type Journal = { sql: string; timestamp: number }[]
 
-  function journal(dir: string): Journal {
-    const file = path.join(dir, "meta/_journal.json")
-    if (!Bun.file(file).size) return []
-
-    const data = JSON.parse(readFileSync(file, "utf-8")) as {
-      entries: { tag: string; when: number }[]
-    }
-
-    return data.entries.map((entry) => ({
-      sql: readFileSync(path.join(dir, `${entry.tag}.sql`), "utf-8"),
-      timestamp: entry.when,
-    }))
+  function time(tag: string) {
+    const match = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(tag)
+    if (!match) return 0
+    return Date.UTC(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4]),
+      Number(match[5]),
+      Number(match[6]),
+    )
   }
 
-  const client = lazy(() => {
+  function migrations(dir: string): Journal {
+    const dirs = readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+
+    const sql = dirs
+      .map((name) => {
+        const file = path.join(dir, name, "migration.sql")
+        if (!Bun.file(file).size) return
+        return {
+          sql: readFileSync(file, "utf-8"),
+          timestamp: time(name),
+        }
+      })
+      .filter(Boolean) as Journal
+
+    return sql.sort((a, b) => a.timestamp - b.timestamp)
+  }
+
+  export const Client = lazy(() => {
     log.info("opening database", { path: path.join(Global.Path.data, "opencode.db") })
 
     const sqlite = new BunDatabase(path.join(Global.Path.data, "opencode.db"), { create: true })
@@ -62,26 +81,13 @@ export namespace Database {
     const entries =
       typeof OPENCODE_MIGRATIONS !== "undefined"
         ? OPENCODE_MIGRATIONS
-        : journal(path.join(import.meta.dirname, "../../migration"))
+        : migrations(path.join(import.meta.dirname, "../../migration"))
     if (entries.length > 0) {
       log.info("applying migrations", {
         count: entries.length,
         mode: typeof OPENCODE_MIGRATIONS !== "undefined" ? "bundled" : "dev",
       })
       migrate(db, entries)
-    }
-
-    // Run json migration if not already done
-    if (!sqlite.prepare("SELECT 1 FROM __drizzle_migrations WHERE hash = 'json-migration'").get()) {
-      Bun.file(path.join(Global.Path.data, "storage/project"))
-        .exists()
-        .then((exists) => {
-          if (!exists) return
-          return migrateFromJson(sqlite).then(() => {
-            sqlite.run("INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('json-migration', ?)", [Date.now()])
-          })
-        })
-        .catch((e) => log.error("json migration failed", { error: e }))
     }
 
     return db
@@ -100,7 +106,7 @@ export namespace Database {
     } catch (err) {
       if (err instanceof Context.NotFound) {
         const effects: (() => void | Promise<void>)[] = []
-        const result = ctx.provide({ effects, tx: client() }, () => callback(client()))
+        const result = ctx.provide({ effects, tx: Client() }, () => callback(Client()))
         for (const effect of effects) effect()
         return result
       }
@@ -122,7 +128,7 @@ export namespace Database {
     } catch (err) {
       if (err instanceof Context.NotFound) {
         const effects: (() => void | Promise<void>)[] = []
-        const result = client().transaction((tx) => {
+        const result = Client().transaction((tx) => {
           return ctx.provide({ tx, effects }, () => callback(tx))
         })
         for (const effect of effects) effect()

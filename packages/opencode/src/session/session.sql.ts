@@ -1,8 +1,7 @@
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core"
+import { sqliteTable, text, integer, index, primaryKey } from "drizzle-orm/sqlite-core"
 import { ProjectTable } from "../project/project.sql"
 import type { MessageV2 } from "./message-v2"
 import type { Snapshot } from "@/snapshot"
-import type { Todo } from "./todo"
 import type { PermissionNext } from "@/permission/next"
 
 export const SessionTable = sqliteTable(
@@ -61,19 +60,20 @@ export const PartTable = sqliteTable(
   (table) => [index("part_message_idx").on(table.message_id), index("part_session_idx").on(table.session_id)],
 )
 
-export const SessionDiffTable = sqliteTable("session_diff", {
-  session_id: text()
-    .primaryKey()
-    .references(() => SessionTable.id, { onDelete: "cascade" }),
-  data: text({ mode: "json" }).notNull().$type<Snapshot.FileDiff[]>(),
-})
-
-export const TodoTable = sqliteTable("todo", {
-  session_id: text()
-    .primaryKey()
-    .references(() => SessionTable.id, { onDelete: "cascade" }),
-  data: text({ mode: "json" }).notNull().$type<Todo.Info[]>(),
-})
+export const TodoTable = sqliteTable(
+  "todo",
+  {
+    session_id: text()
+      .notNull()
+      .references(() => SessionTable.id, { onDelete: "cascade" }),
+    id: text().notNull(),
+    content: text().notNull(),
+    status: text().notNull(),
+    priority: text().notNull(),
+    position: integer().notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.session_id, table.id] }), index("todo_session_idx").on(table.session_id)],
+)
 
 export const PermissionTable = sqliteTable("permission", {
   project_id: text()

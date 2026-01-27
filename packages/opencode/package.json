@@ -26,7 +26,6 @@
   },
   "devDependencies": {
     "@babel/core": "7.28.4",
-    "drizzle-kit": "1.0.0-beta.12-a5629fb",
     "@octokit/webhooks-types": "7.6.1",
     "@opencode-ai/script": "workspace:*",
     "@parcel/watcher-darwin-arm64": "2.5.1",
@@ -43,6 +42,8 @@
     "@types/turndown": "5.0.5",
     "@types/yargs": "17.0.33",
     "@typescript/native-preview": "catalog:",
+    "drizzle-kit": "1.0.0-beta.12-a5629fb",
+    "drizzle-orm": "1.0.0-beta.12-a5629fb",
     "typescript": "catalog:",
     "vscode-languageserver-types": "3.17.5",
     "why-is-node-running": "3.2.2",
@@ -122,5 +123,8 @@
     "yargs": "18.0.0",
     "zod": "catalog:",
     "zod-to-json-schema": "3.24.5"
+  },
+  "overrides": {
+    "drizzle-orm": "1.0.0-beta.12-a5629fb"
   }
 }

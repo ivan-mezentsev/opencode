@@ -11,8 +11,7 @@ import { Snapshot } from "@/snapshot"
 import { Log } from "@/util/log"
 import path from "path"
 import { Instance } from "@/project/instance"
-import { Database, eq } from "@/storage/db"
-import { SessionDiffTable } from "./session.sql"
+import { Storage } from "@/storage/storage"
 import { Bus } from "@/bus"
 
 import { LLM } from "./llm"
@@ -56,13 +55,7 @@ export namespace SessionSummary {
         files: diffs.length,
       },
     })
-    Database.use((db) =>
-      db
-        .insert(SessionDiffTable)
-        .values({ session_id: input.sessionID, data: diffs })
-        .onConflictDoUpdate({ target: SessionDiffTable.session_id, set: { data: diffs } })
-        .run(),
-    )
+    await Storage.write(["session_diff", input.sessionID], diffs)
     Bus.publish(Session.Event.Diff, {
       sessionID: input.sessionID,
       diff: diffs,
@@ -124,10 +117,11 @@ export namespace SessionSummary {
       messageID: Identifier.schema("message").optional(),
     }),
     async (input) => {
-      const row = Database.use((db) =>
-        db.select().from(SessionDiffTable).where(eq(SessionDiffTable.session_id, input.sessionID)).get(),
-      )
-      return row?.data ?? []
+      try {
+        return await Storage.read<Snapshot.FileDiff[]>(["session_diff", input.sessionID])
+      } catch {
+        return []
+      }
     },
   )
 

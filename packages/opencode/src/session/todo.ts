@@ -1,7 +1,7 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import z from "zod"
-import { Database, eq } from "../storage/db"
+import { Database, eq, asc } from "../storage/db"
 import { TodoTable } from "./session.sql"
 
 export namespace Todo {
@@ -26,18 +26,34 @@ export namespace Todo {
   }
 
   export function update(input: { sessionID: string; todos: Info[] }) {
-    Database.use((db) =>
-      db
-        .insert(TodoTable)
-        .values({ session_id: input.sessionID, data: input.todos })
-        .onConflictDoUpdate({ target: TodoTable.session_id, set: { data: input.todos } })
-        .run(),
-    )
+    Database.transaction((db) => {
+      db.delete(TodoTable).where(eq(TodoTable.session_id, input.sessionID)).run()
+      if (input.todos.length === 0) return
+      db.insert(TodoTable)
+        .values(
+          input.todos.map((todo, position) => ({
+            session_id: input.sessionID,
+            id: todo.id,
+            content: todo.content,
+            status: todo.status,
+            priority: todo.priority,
+            position,
+          })),
+        )
+        .run()
+    })
     Bus.publish(Event.Updated, input)
   }
 
   export function get(sessionID: string) {
-    const row = Database.use((db) => db.select().from(TodoTable).where(eq(TodoTable.session_id, sessionID)).get())
-    return row?.data ?? []
+    const rows = Database.use((db) =>
+      db.select().from(TodoTable).where(eq(TodoTable.session_id, sessionID)).orderBy(asc(TodoTable.position)).all(),
+    )
+    return rows.map((row) => ({
+      id: row.id,
+      content: row.content,
+      status: row.status,
+      priority: row.priority,
+    }))
   }
 }

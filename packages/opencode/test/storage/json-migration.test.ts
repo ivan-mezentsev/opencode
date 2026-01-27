@@ -5,20 +5,12 @@ import { migrate } from "drizzle-orm/bun-sqlite/migrator"
 import { eq } from "drizzle-orm"
 import path from "path"
 import fs from "fs/promises"
-import { readFileSync } from "fs"
-import os from "os"
-import { migrateFromJson } from "../../src/storage/json-migration"
+import { readFileSync, readdirSync } from "fs"
+import { JsonMigration } from "../../src/storage/json-migration"
+import { Global } from "../../src/global"
 import { ProjectTable } from "../../src/project/project.sql"
 import { Project } from "../../src/project/project"
-import {
-  SessionTable,
-  MessageTable,
-  PartTable,
-  SessionDiffTable,
-  TodoTable,
-  PermissionTable,
-} from "../../src/session/session.sql"
-import { SessionShareTable, ShareTable } from "../../src/share/share.sql"
+import { SessionTable, MessageTable, PartTable, TodoTable, PermissionTable } from "../../src/session/session.sql"
 
 // Test fixtures
 const fixtures = {
@@ -56,8 +48,9 @@ const fixtures = {
 }
 
 // Helper to create test storage directory structure
-async function setupStorageDir(baseDir: string) {
-  const storageDir = path.join(baseDir, "storage")
+async function setupStorageDir() {
+  const storageDir = path.join(Global.Path.data, "storage")
+  await fs.rm(storageDir, { recursive: true, force: true })
   await fs.mkdir(path.join(storageDir, "project"), { recursive: true })
   await fs.mkdir(path.join(storageDir, "session", "proj_test123abc"), { recursive: true })
   await fs.mkdir(path.join(storageDir, "message", "ses_test456def"), { recursive: true })
@@ -66,7 +59,6 @@ async function setupStorageDir(baseDir: string) {
   await fs.mkdir(path.join(storageDir, "todo"), { recursive: true })
   await fs.mkdir(path.join(storageDir, "permission"), { recursive: true })
   await fs.mkdir(path.join(storageDir, "session_share"), { recursive: true })
-  await fs.mkdir(path.join(storageDir, "share"), { recursive: true })
   // Create legacy marker to indicate JSON storage exists
   await Bun.write(path.join(storageDir, "migration"), "1")
   return storageDir
@@ -79,33 +71,31 @@ function createTestDb() {
 
   // Apply schema migrations using drizzle migrate
   const dir = path.join(import.meta.dirname, "../../migration")
-  const journal = JSON.parse(readFileSync(path.join(dir, "meta/_journal.json"), "utf-8")) as {
-    entries: { tag: string; when: number }[]
-  }
-  const migrations = journal.entries.map((entry) => ({
-    sql: readFileSync(path.join(dir, `${entry.tag}.sql`), "utf-8"),
-    timestamp: entry.when,
-  }))
+  const entries = readdirSync(dir, { withFileTypes: true })
+  const migrations = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => ({
+      sql: readFileSync(path.join(dir, entry.name, "migration.sql"), "utf-8"),
+      timestamp: Number(entry.name.split("_")[0]),
+    }))
+    .sort((a, b) => a.timestamp - b.timestamp)
   migrate(drizzle({ client: sqlite }), migrations)
 
   return sqlite
 }
 
 describe("JSON to SQLite migration", () => {
-  let tmpDir: string
   let storageDir: string
   let sqlite: Database
 
   beforeEach(async () => {
-    tmpDir = path.join(os.tmpdir(), "opencode-migration-test-" + Math.random().toString(36).slice(2))
-    await fs.mkdir(tmpDir, { recursive: true })
-    storageDir = await setupStorageDir(tmpDir)
+    storageDir = await setupStorageDir()
     sqlite = createTestDb()
   })
 
   afterEach(async () => {
     sqlite.close()
-    await fs.rm(tmpDir, { recursive: true, force: true })
+    await fs.rm(storageDir, { recursive: true, force: true })
   })
 
   test("migrates project", async () => {
@@ -121,7 +111,7 @@ describe("JSON to SQLite migration", () => {
       }),
     )
 
-    const stats = await migrateFromJson(sqlite, storageDir)
+    const stats = await JsonMigration.run(sqlite)
 
     expect(stats?.projects).toBe(1)
 
@@ -161,7 +151,7 @@ describe("JSON to SQLite migration", () => {
       }),
     )
 
-    await migrateFromJson(sqlite, storageDir)
+    await JsonMigration.run(sqlite)
 
     const db = drizzle({ client: sqlite })
     const sessions = db.select().from(SessionTable).all()
@@ -198,7 +188,7 @@ describe("JSON to SQLite migration", () => {
       JSON.stringify({ ...fixtures.part }),
     )
 
-    const stats = await migrateFromJson(sqlite, storageDir)
+    const stats = await JsonMigration.run(sqlite)
 
     expect(stats?.messages).toBe(1)
     expect(stats?.parts).toBe(1)
@@ -227,7 +217,7 @@ describe("JSON to SQLite migration", () => {
       }),
     )
 
-    const stats = await migrateFromJson(sqlite, storageDir)
+    const stats = await JsonMigration.run(sqlite)
 
     expect(stats?.sessions).toBe(0)
   })
@@ -243,8 +233,8 @@ describe("JSON to SQLite migration", () => {
       }),
     )
 
-    await migrateFromJson(sqlite, storageDir)
-    await migrateFromJson(sqlite, storageDir)
+    await JsonMigration.run(sqlite)
+    await JsonMigration.run(sqlite)
 
     const db = drizzle({ client: sqlite })
     const projects = db.select().from(ProjectTable).all()
