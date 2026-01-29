@@ -67,7 +67,7 @@ if (Script.release) {
   await $`git cherry-pick HEAD..origin/dev`.nothrow()
   await $`git push origin HEAD --tags --no-verify --force-with-lease`
   await new Promise((resolve) => setTimeout(resolve, 5_000))
-  await $`gh release edit v${Script.version} --title "v${Script.version}" --notes ${notes.join("\n") || "No notable changes"}`
+  await $`gh release edit v${Script.version} --draft=false --title "v${Script.version}" --notes ${notes.join("\n") || "No notable changes"}`
 }
 
 console.log("\n=== cli ===\n")
