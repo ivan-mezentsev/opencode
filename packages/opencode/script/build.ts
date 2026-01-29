@@ -25,14 +25,28 @@ await Bun.write(
 )
 console.log("Generated models-snapshot.ts")
 
-// Load migrations from journal
-const journal = (await Bun.file(path.join(dir, "migration/meta/_journal.json")).json()) as {
-  entries: { tag: string; when: number }[]
-}
+// Load migrations from migration directories
+const migrationDirs = (await fs.promises.readdir(path.join(dir, "migration"), { withFileTypes: true }))
+  .filter((entry) => entry.isDirectory() && /^\d{4}\d{2}\d{2}\d{2}\d{2}\d{2}/.test(entry.name))
+  .map((entry) => entry.name)
+  .sort()
+
 const migrations = await Promise.all(
-  journal.entries.map(async (entry) => {
-    const sql = await Bun.file(path.join(dir, `migration/${entry.tag}.sql`)).text()
-    return { sql, timestamp: entry.when }
+  migrationDirs.map(async (name) => {
+    const file = path.join(dir, "migration", name, "migration.sql")
+    const sql = await Bun.file(file).text()
+    const match = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(name)
+    const timestamp = match
+      ? Date.UTC(
+          Number(match[1]),
+          Number(match[2]) - 1,
+          Number(match[3]),
+          Number(match[4]),
+          Number(match[5]),
+          Number(match[6]),
+        )
+      : 0
+    return { sql, timestamp }
   }),
 )
 console.log(`Loaded ${migrations.length} migrations`)
