@@ -32,15 +32,7 @@ Add highlights before publishing. Delete this section if no highlights.
 
 `
 
-let notes: string[] = []
-
 console.log("=== publishing ===\n")
-
-if (!Script.preview) {
-  const previous = await getLatestRelease()
-  notes = await buildNotes(previous, "HEAD")
-  // notes.unshift(highlightsTemplate)
-}
 
 const pkgjsons = await Array.fromAsync(
   new Bun.Glob("**/package.json").scan({
@@ -66,6 +58,9 @@ await $`bun install`
 await import(`../packages/sdk/js/script/build.ts`)
 
 if (Script.release) {
+  const previous = await getLatestRelease()
+  const notes = await buildNotes(previous, "HEAD")
+  // notes.unshift(highlightsTemplate)
   await $`git commit -am "release: v${Script.version}"`
   await $`git tag v${Script.version}`
   await $`git fetch origin`
