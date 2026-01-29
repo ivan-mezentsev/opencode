@@ -21,8 +21,8 @@ jobs:
           - name: windows
             host: windows-latest
             playwright: bunx playwright install
-            workdir: packages/app
-            command: bun test:e2e:local
+            workdir: .
+            command: bun turbo run @opencode-ai/app#test:e2e:local
     runs-on: ${{ matrix.settings.host }}
     defaults:
       run:
@@ -35,6 +35,14 @@ jobs:
 
       - name: Setup Bun
         uses: ./.github/actions/setup-bun
+
+      - name: Setup Turborepo Remote Cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
 
       - name: Install Playwright browsers
         working-directory: packages/app
