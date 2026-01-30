@@ -603,21 +603,9 @@ export namespace Session {
     },
   )
 
-  const UpdatePartInput = z.union([
-    MessageV2.Part,
-    z.object({
-      part: MessageV2.TextPart,
-      delta: z.string(),
-    }),
-    z.object({
-      part: MessageV2.ReasoningPart,
-      delta: z.string(),
-    }),
-  ])
+  const UpdatePartInput = MessageV2.Part
 
-  export const updatePart = fn(UpdatePartInput, async (input) => {
-    const part = "delta" in input ? input.part : input
-    const delta = "delta" in input ? input.delta : undefined
+  export const updatePart = fn(UpdatePartInput, async (part) => {
     const { id, messageID, sessionID, ...data } = part
     const time = Date.now()
     Database.use((db) => {
@@ -634,12 +622,24 @@ export namespace Session {
       Database.effect(() =>
         Bus.publish(MessageV2.Event.PartUpdated, {
           part,
-          delta,
         }),
       )
     })
     return part
   })
+
+  export const updatePartDelta = fn(
+    z.object({
+      sessionID: z.string(),
+      messageID: z.string(),
+      partID: z.string(),
+      field: z.string(),
+      delta: z.string(),
+    }),
+    async (input) => {
+      Bus.publish(MessageV2.Event.PartDelta, input)
+    },
+  )
 
   export const getUsage = fn(
     z.object({

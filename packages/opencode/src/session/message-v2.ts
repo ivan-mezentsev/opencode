@@ -417,7 +417,16 @@ export namespace MessageV2 {
       "message.part.updated",
       z.object({
         part: Part,
-        delta: z.string().optional(),
+      }),
+    ),
+    PartDelta: BusEvent.define(
+      "message.part.delta",
+      z.object({
+        sessionID: z.string(),
+        messageID: z.string(),
+        partID: z.string(),
+        field: z.string(),
+        delta: z.string(),
       }),
     ),
     PartRemoved: BusEvent.define(
