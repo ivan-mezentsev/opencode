@@ -8,7 +8,7 @@ import { BunProc } from "../bun"
 import { Plugin } from "../plugin"
 import { ModelsDev } from "./models"
 import { NamedError } from "@opencode-ai/util/error"
-import { Auth } from "../auth"
+import { Auth, OAUTH_DUMMY_KEY } from "../auth"
 import { Env } from "../env"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
@@ -37,7 +37,6 @@ import { createPerplexity } from "@ai-sdk/perplexity"
 import { createVercel } from "@ai-sdk/vercel"
 import { createGitLab } from "@gitlab/gitlab-ai-provider"
 import { ProviderTransform } from "./transform"
-import { ProviderModelDetection } from "./model-detection"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -668,7 +667,9 @@ export namespace Provider {
       source: "custom",
       name: provider.name,
       env: provider.env ?? [],
-      options: {},
+      options: {
+        ...(provider.api && { baseURL: provider.api }),
+      },
       models: mapValues(provider.models, (model) => fromModelsDevModel(provider, model)),
     }
   }
@@ -693,7 +694,7 @@ export namespace Provider {
     const fetchFn = (provider.options["fetch"] as typeof fetch) ?? fetch
     const apiKey = provider.options["apiKey"] ?? provider.key ?? ""
     const headers = new Headers()
-    if (apiKey) headers.append("Authorization", `Bearer ${apiKey}`)
+    if (apiKey && apiKey !== OAUTH_DUMMY_KEY) headers.append("Authorization", `Bearer ${apiKey}`)
     const models = await fetchFn(`${baseURL}/models`, {
       headers,
       signal: AbortSignal.timeout(3 * 1000),
