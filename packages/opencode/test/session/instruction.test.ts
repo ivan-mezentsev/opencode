@@ -6,14 +6,6 @@ import { InstructionPrompt } from "../../src/session/instruction"
 import { Instance } from "../../src/project/instance"
 import { tmpdir } from "../fixture/fixture"
 
-const restore = (key: string, value: string | undefined) => {
-  if (value === undefined) {
-    delete process.env[key]
-    return
-  }
-  process.env[key] = value
-}
-
 describe("InstructionPrompt.resolve", () => {
   test("returns empty when AGENTS.md is at project root (already in systemPaths)", async () => {
     await using tmp = await tmpdir({
@@ -96,9 +88,12 @@ describe("InstructionPrompt.systemPaths", () => {
       })
     } finally {
       await fs.rm(path.join(Global.Path.config, "AGENTS.md"), { force: true })
-      restore("OPENCODE_TEST_HOME", homeValue)
-      restore("OPENCODE_CONFIG_DIR", configValue)
-      restore("OPENCODE_DISABLE_CLAUDE_CODE_PROMPT", disableValue)
+      if (homeValue === undefined) delete process.env["OPENCODE_TEST_HOME"]
+      if (homeValue !== undefined) process.env["OPENCODE_TEST_HOME"] = homeValue
+      if (configValue === undefined) delete process.env["OPENCODE_CONFIG_DIR"]
+      if (configValue !== undefined) process.env["OPENCODE_CONFIG_DIR"] = configValue
+      if (disableValue === undefined) delete process.env["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"]
+      if (disableValue !== undefined) process.env["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"] = disableValue
     }
   })
 
@@ -133,9 +128,12 @@ describe("InstructionPrompt.systemPaths", () => {
       })
     } finally {
       await fs.rm(path.join(Global.Path.config, "AGENTS.md"), { force: true })
-      restore("OPENCODE_TEST_HOME", homeValue)
-      restore("OPENCODE_CONFIG_DIR", configValue)
-      restore("OPENCODE_DISABLE_CLAUDE_CODE_PROMPT", disableValue)
+      if (homeValue === undefined) delete process.env["OPENCODE_TEST_HOME"]
+      if (homeValue !== undefined) process.env["OPENCODE_TEST_HOME"] = homeValue
+      if (configValue === undefined) delete process.env["OPENCODE_CONFIG_DIR"]
+      if (configValue !== undefined) process.env["OPENCODE_CONFIG_DIR"] = configValue
+      if (disableValue === undefined) delete process.env["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"]
+      if (disableValue !== undefined) process.env["OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"] = disableValue
     }
   })
 })
