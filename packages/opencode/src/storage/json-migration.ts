@@ -6,6 +6,7 @@ import { ProjectTable } from "../project/project.sql"
 import { SessionTable, MessageTable, PartTable, TodoTable, PermissionTable } from "../session/session.sql"
 import { SessionShareTable } from "../share/share.sql"
 import path from "path"
+import { existsSync } from "fs"
 
 export namespace JsonMigration {
   const log = Log.create({ service: "json-migration" })
@@ -13,7 +14,7 @@ export namespace JsonMigration {
   export async function run(sqlite: Database) {
     const storageDir = path.join(Global.Path.data, "storage")
 
-    if (!(await Bun.file(storageDir).exists())) {
+    if (!existsSync(storageDir)) {
       log.info("storage directory does not exist, skipping migration")
       return {
         projects: 0,
