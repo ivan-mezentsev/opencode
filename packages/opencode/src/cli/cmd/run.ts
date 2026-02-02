@@ -420,7 +420,9 @@ export const RunCommand = cmd({
               if (!text) continue
               const line = `Thinking: ${text}`
               if (process.stdout.isTTY) {
+                UI.empty()
                 UI.println(`\u001b[3m${line}\u001b[0m`)
+                UI.empty()
                 continue
               }
               process.stdout.write(line + EOL)
