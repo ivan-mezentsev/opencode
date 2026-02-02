@@ -413,6 +413,19 @@ export const RunCommand = cmd({
               UI.println(part.text)
               UI.empty()
             }
+
+            if (part.type === "reasoning" && part.time?.end) {
+              if (emit("reasoning", { part })) continue
+              const text = part.text.trim()
+              if (!text) continue
+              if (!process.stdout.isTTY) {
+                process.stdout.write(text + EOL)
+                continue
+              }
+              UI.empty()
+              UI.println(`_${text}_`)
+              UI.empty()
+            }
           }
 
           if (event.type === "session.error") {
