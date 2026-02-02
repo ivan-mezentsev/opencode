@@ -418,13 +418,13 @@ export const RunCommand = cmd({
               if (emit("reasoning", { part })) continue
               const text = part.text.trim()
               if (!text) continue
-              if (!process.stdout.isTTY) {
-                process.stdout.write(text + EOL)
+              if (process.stdout.isTTY) {
+                UI.empty()
+                UI.println(`\u001b[3m${text}\u001b[0m`)
+                UI.empty()
                 continue
               }
-              UI.empty()
-              UI.println(`_${text}_`)
-              UI.empty()
+              process.stdout.write(text + EOL)
             }
           }
 
