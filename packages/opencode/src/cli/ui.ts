@@ -35,6 +35,7 @@ export namespace UI {
 
   let blank = false
   export function empty() {
+    return
     if (blank) return
     println("" + Style.TEXT_NORMAL)
     blank = true
