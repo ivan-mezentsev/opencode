@@ -64,12 +64,14 @@ export const SkillTool = Tool.define("skill", async (ctx) => {
       const content = skill.content
       const dir = path.dirname(skill.location)
 
-      // Format output similar to plugin pattern
-      const output = [`## Skill: ${skill.name}`, "", `**Base directory**: ${dir}`, "", content.trim()].join("\n")
-
       return {
         title: `Loaded skill: ${skill.name}`,
-        output,
+        output: [
+          `Successfully loaded skill: ${skill.name}`,
+          `Base directory for this skill: ${dir}`,
+          "",
+          content.trim(),
+        ].join("\n"),
         metadata: {
           name: skill.name,
           dir,
