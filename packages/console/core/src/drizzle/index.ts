@@ -14,7 +14,7 @@ export namespace Database {
     PlanetscaleQueryResultHKT,
     PlanetScalePreparedQueryHKT,
     Record<string, never>,
-    ExtractTablesWithRelations<Record<string, never>, Record<string, never>>
+    ExtractTablesWithRelations<Record<string, never>>
   >
 
   const client = memo(() => {
