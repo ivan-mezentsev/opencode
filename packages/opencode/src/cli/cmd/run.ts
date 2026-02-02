@@ -367,15 +367,6 @@ export const RunCommand = cmd({
     }
 
     async function execute(sdk: OpencodeClient) {
-      function show() {
-        if (args.format === "json") return
-        if (!process.stdout.isTTY) return
-        const text = message.trimEnd()
-        if (!text) return
-        UI.empty()
-        text.split("\n").forEach((line) => UI.println(`> ${line}`))
-        UI.empty()
-      }
       const seen = new Set<string>()
 
       function head(info: Message) {
@@ -418,7 +409,18 @@ export const RunCommand = cmd({
       let error: string | undefined
 
       async function loop() {
+        UI.empty()
+        UI.println(`> ${args.message}`)
+        UI.empty()
+        let start = false
         for await (const event of events.stream) {
+          if (event.type === "message.updated" && event.properties.info.role === "assistant" && !start) {
+            start = true
+            UI.empty()
+            UI.println(`# ${event.properties.info.agent} · ${event.properties.info.modelID}`)
+            UI.empty()
+          }
+
           if (event.type === "message.part.updated") {
             const part = event.properties.part
             if (part.sessionID !== sessionID) continue
@@ -529,8 +531,6 @@ export const RunCommand = cmd({
         process.exit(1)
       }
       await share(sdk, sessionID)
-
-      if (!args.command) show()
 
       loop().catch((e) => {
         console.error(e)
