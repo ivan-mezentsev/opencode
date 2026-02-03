@@ -5,7 +5,7 @@ import { Global } from "../global"
 import { Filesystem } from "../util/filesystem"
 import { lazy } from "../util/lazy"
 import { Lock } from "../util/lock"
-import { $ } from "bun"
+import { gitText } from "../util/git"
 import { NamedError } from "@opencode-ai/util/error"
 import z from "zod"
 
@@ -45,18 +45,18 @@ export namespace Storage {
           }
           if (!worktree) continue
           if (!(await Filesystem.isDir(worktree))) continue
-          const [id] = await $`git rev-list --max-parents=0 --all`
-            .quiet()
-            .nothrow()
-            .cwd(worktree)
-            .text()
+          const roots = await gitText(["rev-list", "--max-parents=0", "--all"], worktree)
             .then((x) =>
               x
-                .split("\n")
-                .filter(Boolean)
-                .map((x) => x.trim())
-                .toSorted(),
+                ? x
+                    .split("\n")
+                    .filter(Boolean)
+                    .map((x) => x.trim())
+                    .toSorted()
+                : undefined,
             )
+            .catch(() => undefined)
+          const id = roots?.[0]
           if (!id) continue
           projectID = id
 

@@ -2,7 +2,7 @@ import z from "zod"
 import fs from "fs/promises"
 import { Filesystem } from "../util/filesystem"
 import path from "path"
-import { $ } from "bun"
+import { gitText } from "../util/git"
 import { Storage } from "../storage/storage"
 import { Log } from "../util/log"
 import { Flag } from "@/flag/flag"
@@ -55,15 +55,15 @@ export namespace Project {
 
     const { id, sandbox, worktree, vcs } = await iife(async () => {
       const matches = Filesystem.up({ targets: [".git"], start: directory })
-      const git = await matches.next().then((x) => x.value)
+      const gitdir = await matches.next().then((x) => x.value)
       await matches.return()
-      if (git) {
-        let sandbox = path.dirname(git)
+      if (gitdir) {
+        let sandbox = path.dirname(gitdir)
 
         const gitBinary = Bun.which("git")
 
         // cached id calculation
-        let id = await Bun.file(path.join(git, "opencode"))
+        let id = await Bun.file(path.join(gitdir, "opencode"))
           .text()
           .then((x) => x.trim())
           .catch(() => undefined)
@@ -79,11 +79,7 @@ export namespace Project {
 
         // generate id from root commit
         if (!id) {
-          const roots = await $`git rev-list --max-parents=0 --all`
-            .quiet()
-            .nothrow()
-            .cwd(sandbox)
-            .text()
+          const roots = await gitText(["rev-list", "--max-parents=0", "--all"], sandbox)
             .then((x) =>
               x
                 .split("\n")
@@ -104,7 +100,7 @@ export namespace Project {
 
           id = roots[0]
           if (id) {
-            void Bun.file(path.join(git, "opencode"))
+            void Bun.file(path.join(gitdir, "opencode"))
               .write(id)
               .catch(() => undefined)
           }
@@ -119,11 +115,7 @@ export namespace Project {
           }
         }
 
-        const top = await $`git rev-parse --show-toplevel`
-          .quiet()
-          .nothrow()
-          .cwd(sandbox)
-          .text()
+        const top = await gitText(["rev-parse", "--show-toplevel"], sandbox)
           .then((x) => path.resolve(sandbox, x.trim()))
           .catch(() => undefined)
 
@@ -138,11 +130,7 @@ export namespace Project {
 
         sandbox = top
 
-        const worktree = await $`git rev-parse --git-common-dir`
-          .quiet()
-          .nothrow()
-          .cwd(sandbox)
-          .text()
+        const worktree = await gitText(["rev-parse", "--git-common-dir"], sandbox)
           .then((x) => {
             const dirname = path.dirname(x.trim())
             if (dirname === ".") return sandbox
