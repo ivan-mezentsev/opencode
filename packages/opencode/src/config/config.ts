@@ -31,6 +31,7 @@ import { Event } from "../server/event"
 import { PackageRegistry } from "@/bun/registry"
 import { proxied } from "@/util/proxied"
 import { iife } from "@/util/iife"
+import { BUILTIN_PLUGINS } from "@/plugin/builtin"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
@@ -147,7 +148,21 @@ export namespace Config {
 
     const deps = []
 
+    // Collect npm plugins declared in each directory's config so we can
+    // install them into that directory (instead of ~/.cache/opencode/)
+    const dirPlugins = new Map<string, string[]>()
+
+    // Plugins from global/project configs that were loaded before the directory
+    // loop get assigned to the global config directory.
+    // Built-in plugins also get installed in the global config directory.
+    const preloopPlugins = [
+      ...npmPlugins(result.plugin ?? []),
+      ...(!Flag.OPENCODE_DISABLE_DEFAULT_PLUGINS ? BUILTIN_PLUGINS : []),
+    ]
+
     for (const dir of unique(directories)) {
+      const pluginsBefore = [...(result.plugin ?? [])]
+
       if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
         for (const file of ["opencode.jsonc", "opencode.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
@@ -159,10 +174,17 @@ export namespace Config {
         }
       }
 
+      // Determine which npm plugins this directory's config added
+      const added = npmPlugins((result.plugin ?? []).filter((p) => !pluginsBefore.includes(p)))
+
+      // First directory (global config) also gets the pre-loop plugins
+      const plugins = dir === Global.Path.config ? [...preloopPlugins, ...added] : added
+      if (plugins.length) dirPlugins.set(dir, plugins)
+
       deps.push(
         iife(async () => {
-          const shouldInstall = await needsInstall(dir)
-          if (shouldInstall) await installDependencies(dir)
+          const shouldInstall = await needsInstall(dir, dirPlugins.get(dir))
+          if (shouldInstall) await installDependencies(dir, dirPlugins.get(dir))
         }),
       )
 
@@ -247,7 +269,19 @@ export namespace Config {
     await Promise.all(deps)
   }
 
-  export async function installDependencies(dir: string) {
+  /** Extract npm plugin specifiers (non-file:// plugins) */
+  function npmPlugins(plugins: string[]): string[] {
+    return plugins.filter((p) => !p.startsWith("file://"))
+  }
+
+  /** Parse a plugin specifier into package name and version */
+  function parsePlugin(specifier: string): { pkg: string; version: string } {
+    const lastAt = specifier.lastIndexOf("@")
+    if (lastAt > 0) return { pkg: specifier.substring(0, lastAt), version: specifier.substring(lastAt + 1) }
+    return { pkg: specifier, version: "latest" }
+  }
+
+  export async function installDependencies(dir: string, plugins?: string[]) {
     const pkg = path.join(dir, "package.json")
     const targetVersion = Installation.isLocal() ? "*" : Installation.VERSION
 
@@ -258,6 +292,16 @@ export namespace Config {
       ...json.dependencies,
       "@opencode-ai/plugin": targetVersion,
     }
+
+    // Add declared npm plugins to this directory's package.json
+    // so they get installed here instead of in ~/.cache/opencode/
+    if (plugins) {
+      for (const specifier of plugins) {
+        const parsed = parsePlugin(specifier)
+        json.dependencies[parsed.pkg] = parsed.version
+      }
+    }
+
     await Bun.write(pkg, JSON.stringify(json, null, 2))
     await new Promise((resolve) => setTimeout(resolve, 3000))
 
@@ -265,8 +309,7 @@ export namespace Config {
     const hasGitIgnore = await Bun.file(gitignore).exists()
     if (!hasGitIgnore) await Bun.write(gitignore, ["node_modules", "package.json", "bun.lock", ".gitignore"].join("\n"))
 
-    // Install any additional dependencies defined in the package.json
-    // This allows local plugins and custom tools to use external packages
+    // Install all dependencies (including npm plugins) in this config directory
     await BunProc.run(
       [
         "install",
@@ -286,7 +329,7 @@ export namespace Config {
     }
   }
 
-  async function needsInstall(dir: string) {
+  async function needsInstall(dir: string, plugins?: string[]) {
     // Some config dirs may be read-only.
     // Installing deps there will fail; skip installation in that case.
     const writable = await isWritable(dir)
@@ -311,15 +354,27 @@ export namespace Config {
     const targetVersion = Installation.isLocal() ? "latest" : Installation.VERSION
     if (targetVersion === "latest") {
       const isOutdated = await PackageRegistry.isOutdated("@opencode-ai/plugin", depVersion, dir)
-      if (!isOutdated) return false
-      log.info("Cached version is outdated, proceeding with install", {
-        pkg: "@opencode-ai/plugin",
-        cachedVersion: depVersion,
-      })
+      if (isOutdated) {
+        log.info("Cached version is outdated, proceeding with install", {
+          pkg: "@opencode-ai/plugin",
+          cachedVersion: depVersion,
+        })
+        return true
+      }
+    } else if (depVersion !== targetVersion) {
       return true
     }
-    if (depVersion === targetVersion) return false
-    return true
+
+    // Check if any declared plugins are missing from the installed dependencies
+    if (plugins) {
+      for (const specifier of plugins) {
+        const parsed = parsePlugin(specifier)
+        if (!dependencies[parsed.pkg]) return true
+        if (!existsSync(path.join(nodeModules, ...parsed.pkg.split("/")))) return true
+      }
+    }
+
+    return false
   }
 
   function rel(item: string, patterns: string[]) {

@@ -4,7 +4,6 @@ import { Bus } from "../bus"
 import { Log } from "../util/log"
 import { createOpencodeClient } from "@opencode-ai/sdk"
 import { Server } from "../server/server"
-import { BunProc } from "../bun"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
 import { CodexAuthPlugin } from "./codex"
@@ -12,14 +11,25 @@ import { Session } from "../session"
 import { NamedError } from "@opencode-ai/util/error"
 import { CopilotAuthPlugin } from "./copilot"
 import { gitlabAuthPlugin as GitlabAuthPlugin } from "@gitlab/opencode-gitlab-auth"
+import path from "path"
+import { existsSync } from "fs"
+import { BUILTIN_PLUGINS } from "./builtin"
 
 export namespace Plugin {
   const log = Log.create({ service: "plugin" })
 
-  const BUILTIN = ["opencode-anthropic-auth@0.0.13"]
+  export const BUILTIN = BUILTIN_PLUGINS
 
   // Built-in plugins that are directly imported (not installed from npm)
   const INTERNAL_PLUGINS: PluginInstance[] = [CodexAuthPlugin, CopilotAuthPlugin, GitlabAuthPlugin]
+
+  /** Resolve an npm plugin from the config directories' node_modules */
+  function resolve(pkg: string, directories: string[]): string | undefined {
+    for (const dir of directories) {
+      const mod = path.join(dir, "node_modules", ...pkg.split("/"))
+      if (existsSync(mod)) return mod
+    }
+  }
 
   const state = Instance.state(async () => {
     const client = createOpencodeClient({
@@ -50,6 +60,10 @@ export namespace Plugin {
       plugins.push(...BUILTIN)
     }
 
+    // Wait for dependencies so npm plugins are installed in their config directories
+    await Config.waitForDependencies()
+    const directories = await Config.directories()
+
     for (let plugin of plugins) {
       // ignore old codex plugin since it is supported first party now
       if (plugin.includes("opencode-openai-codex-auth") || plugin.includes("opencode-copilot-auth")) continue
@@ -57,26 +71,24 @@ export namespace Plugin {
       if (!plugin.startsWith("file://")) {
         const lastAtIndex = plugin.lastIndexOf("@")
         const pkg = lastAtIndex > 0 ? plugin.substring(0, lastAtIndex) : plugin
-        const version = lastAtIndex > 0 ? plugin.substring(lastAtIndex + 1) : "latest"
         const builtin = BUILTIN.some((x) => x.startsWith(pkg + "@"))
-        plugin = await BunProc.install(pkg, version).catch((err) => {
-          if (!builtin) throw err
 
-          const message = err instanceof Error ? err.message : String(err)
-          log.error("failed to install builtin plugin", {
-            pkg,
-            version,
-            error: message,
-          })
+        // Resolve the plugin from config directories' node_modules
+        const resolved = resolve(pkg, directories)
+        if (!resolved) {
+          const message = `Plugin ${plugin} not found in any config directory`
+          if (!builtin) {
+            log.error("plugin not found", { plugin, directories })
+            throw new Error(message)
+          }
+
+          log.error("failed to resolve builtin plugin", { plugin })
           Bus.publish(Session.Event.Error, {
-            error: new NamedError.Unknown({
-              message: `Failed to install built-in plugin ${pkg}@${version}: ${message}`,
-            }).toObject(),
+            error: new NamedError.Unknown({ message }).toObject(),
           })
-
-          return ""
-        })
-        if (!plugin) continue
+          continue
+        }
+        plugin = resolved
       }
       const mod = await import(plugin)
       // Prevent duplicate initialization when plugins export the same function
