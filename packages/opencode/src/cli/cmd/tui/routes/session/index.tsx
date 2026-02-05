@@ -232,7 +232,7 @@ export function Session() {
       `  █▀▀█  ${UI.Style.TEXT_DIM}${title}${UI.Style.TEXT_NORMAL}`,
       `  █  █  ${UI.Style.TEXT_DIM}opencode -s ${session()?.id}${UI.Style.TEXT_NORMAL}`,
     ]
-    if (Installation.isPreview()) {
+    if (Installation.CHANNEL === "beta") {
       lines.push(
         `  ▀▀▀▀  ${UI.Style.TEXT_DIM}found a bug? report it on discord at https://opencode.ai/discord${UI.Style.TEXT_NORMAL}`,
       )
