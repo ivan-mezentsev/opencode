@@ -53,10 +53,6 @@ export namespace Installation {
     return CHANNEL !== "latest"
   }
 
-  export function isBeta() {
-    return CHANNEL === "beta"
-  }
-
   export function isLocal() {
     return CHANNEL === "local"
   }
