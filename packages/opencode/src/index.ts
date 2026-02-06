@@ -82,7 +82,31 @@ const cli = yargs(hideBin(process.argv))
     const marker = path.join(Global.Path.data, "opencode.db")
     if (!(await Bun.file(marker).exists())) {
       console.log("Performing one time database migration, may take a few minutes...")
-      await JsonMigration.run(Database.Client().$client)
+      const tty = process.stdout.isTTY
+      const width = 36
+      const orange = "\x1b[38;5;214m"
+      const muted = "\x1b[0;2m"
+      const reset = "\x1b[0m"
+      let last = -1
+      if (tty) process.stdout.write("\x1b[?25l")
+      try {
+        await JsonMigration.run(Database.Client().$client, {
+          progress: (event) => {
+            if (!tty) return
+            const percent = Math.floor((event.current / event.total) * 100)
+            if (percent === last && event.current !== event.total) return
+            last = percent
+            const fill = Math.round((percent / 100) * width)
+            const bar = `${"■".repeat(fill)}${"･".repeat(width - fill)}`
+            process.stdout.write(
+              `\r${orange}${bar} ${percent.toString().padStart(3)}%${reset} ${muted}${event.label.padEnd(12)} ${event.current}/${event.total}${reset}`,
+            )
+            if (event.current === event.total) process.stdout.write("\n")
+          },
+        })
+      } finally {
+        if (tty) process.stdout.write("\x1b[?25h")
+      }
       console.log("Database migration complete.")
     }
   })

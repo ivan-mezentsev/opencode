@@ -11,7 +11,17 @@ import { existsSync } from "fs"
 export namespace JsonMigration {
   const log = Log.create({ service: "json-migration" })
 
-  export async function run(sqlite: Database) {
+  export type Progress = {
+    current: number
+    total: number
+    label: string
+  }
+
+  type Options = {
+    progress?: (event: Progress) => void
+  }
+
+  export async function run(sqlite: Database, options?: Options) {
     const storageDir = path.join(Global.Path.data, "storage")
 
     if (!existsSync(storageDir)) {
@@ -120,6 +130,25 @@ export namespace JsonMigration {
       shares: shareFiles.length,
     })
 
+    const total = Math.max(
+      1,
+      projectFiles.length +
+        sessionFiles.length +
+        messageFiles.length +
+        partFiles.length +
+        todoFiles.length +
+        permFiles.length +
+        shareFiles.length,
+    )
+    const progress = options?.progress
+    let current = 0
+    const step = (label: string, count: number) => {
+      current = Math.min(total, current + count)
+      progress?.({ current, total, label })
+    }
+
+    progress?.({ current, total, label: "starting" })
+
     sqlite.exec("BEGIN TRANSACTION")
 
     // Migrate projects first (no FK deps)
@@ -151,6 +180,7 @@ export namespace JsonMigration {
         })
       }
       stats.projects += insert(projectValues, ProjectTable, "project")
+      step("projects", end - i)
     }
     log.info("migrated projects", { count: stats.projects, duration: Math.round(performance.now() - start) })
 
@@ -195,6 +225,7 @@ export namespace JsonMigration {
         })
       }
       stats.sessions += insert(sessionValues, SessionTable, "session")
+      step("sessions", end - i)
     }
     log.info("migrated sessions", { count: stats.sessions })
     if (orphans.sessions > 0) {
@@ -241,6 +272,7 @@ export namespace JsonMigration {
       }
       values.length = count
       stats.messages += insert(values, MessageTable, "message")
+      step("messages", end - i)
     }
     log.info("migrated messages", { count: stats.messages })
 
@@ -281,6 +313,7 @@ export namespace JsonMigration {
       }
       values.length = count
       stats.parts += insert(values, PartTable, "part")
+      step("parts", end - i)
     }
     log.info("migrated parts", { count: stats.parts })
 
@@ -317,6 +350,7 @@ export namespace JsonMigration {
         }
       }
       stats.todos += insert(values, TodoTable, "todo")
+      step("todos", end - i)
     }
     log.info("migrated todos", { count: stats.todos })
     if (orphans.todos > 0) {
@@ -341,6 +375,7 @@ export namespace JsonMigration {
         permValues.push({ project_id: projectID, data })
       }
       stats.permissions += insert(permValues, PermissionTable, "permission")
+      step("permissions", end - i)
     }
     log.info("migrated permissions", { count: stats.permissions })
     if (orphans.permissions > 0) {
@@ -369,6 +404,7 @@ export namespace JsonMigration {
         shareValues.push({ session_id: sessionID, id: data.id, secret: data.secret, url: data.url })
       }
       stats.shares += insert(shareValues, SessionShareTable, "session_share")
+      step("shares", end - i)
     }
     log.info("migrated session shares", { count: stats.shares })
     if (orphans.shares > 0) {
@@ -392,6 +428,8 @@ export namespace JsonMigration {
     if (stats.errors.length > 0) {
       log.warn("migration errors", { errors: stats.errors.slice(0, 20) })
     }
+
+    progress?.({ current: total, total, label: "complete" })
 
     return stats
   }
