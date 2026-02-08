@@ -355,18 +355,6 @@ export function Autocomplete(props: {
   const commands = createMemo((): AutocompleteOption[] => {
     const results: AutocompleteOption[] = [...command.slashes()]
 
-    results.push({
-      display: "/handoff",
-      description: "Handoff to another context with a goal",
-      onSelect: () => {
-        const newText = "/handoff "
-        const cursor = props.input().logicalCursor
-        props.input().deleteRange(0, 0, cursor.row, cursor.col)
-        props.input().insertText(newText)
-        props.input().cursorOffset = Bun.stringWidth(newText)
-      },
-    })
-
     for (const serverCommand of sync.data.command) {
       if (serverCommand.source === "skill") continue
       const label = serverCommand.source === "mcp" ? ":mcp" : ""
