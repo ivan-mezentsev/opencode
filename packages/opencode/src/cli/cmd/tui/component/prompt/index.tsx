@@ -74,7 +74,7 @@ export function Prompt(props: PromptProps) {
   const renderer = useRenderer()
   const { theme, syntax } = useTheme()
   const kv = useKV()
-  const [autoaccept, setAutoaccept] = kv.signal("permission_auto_accept", false)
+  const [autoaccept, setAutoaccept] = kv.signal<"none" | "edit">("permission_auto_accept", "edit")
 
   function promptModelWarning() {
     toast.show({
@@ -159,13 +159,13 @@ export function Prompt(props: PromptProps) {
   command.register(() => {
     return [
       {
-        title: autoaccept() ? "Disable permissions" : "Enable permissions",
+        title: autoaccept() === "none" ? "Enable autoedit" : "Disable autoedit",
         value: "permission.auto_accept.toggle",
         search: "toggle permissions",
         keybind: "permission_auto_accept_toggle",
         category: "Agent",
         onSelect: (dialog) => {
-          setAutoaccept(!autoaccept() as any)
+          setAutoaccept(() => (autoaccept() === "none" ? "edit" : "none"))
           dialog.clear()
         },
       },
@@ -1005,9 +1005,9 @@ export function Prompt(props: PromptProps) {
                   </box>
                 </Show>
               </box>
-              <Show when={autoaccept()}>
+              <Show when={autoaccept() === "edit"}>
                 <text>
-                  <span style={{ fg: theme.warning, bold: true }}>auto-accept</span>
+                  <span style={{ fg: theme.warning, bold: true }}>auto-edit</span>
                 </text>
               </Show>
             </box>

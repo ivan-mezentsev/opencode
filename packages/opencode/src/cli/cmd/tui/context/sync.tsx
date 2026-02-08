@@ -105,7 +105,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
     const sdk = useSDK()
     const kv = useKV()
-    const [autoaccept] = kv.signal("permission_auto_accept", false)
+    const [autoaccept] = kv.signal<"none" | "edit">("permission_auto_accept", "edit")
 
     sdk.event.listen((e) => {
       const event = e.details
@@ -130,7 +130,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
         case "permission.asked": {
           const request = event.properties
-          if (autoaccept()) {
+          if (autoaccept() === "edit" && request.permission === "edit") {
             sdk.client.permission.reply({
               reply: "once",
               requestID: request.id,
