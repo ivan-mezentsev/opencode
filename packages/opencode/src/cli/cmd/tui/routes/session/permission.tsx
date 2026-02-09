@@ -3,10 +3,10 @@ import { createMemo, For, Match, Show, Switch } from "solid-js"
 import { Portal, useKeyboard, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
 import type { TextareaRenderable } from "@opentui/core"
 import { useKeybind } from "../../context/keybind"
-import { useTheme, selectedForeground } from "../../context/theme"
+import { useTheme } from "../../context/theme"
 import type { PermissionRequest } from "@opencode-ai/sdk/v2"
 import { useSDK } from "../../context/sdk"
-import { SplitBorder } from "../../component/border"
+
 import { useSync } from "../../context/sync"
 import { useTextareaKeybindings } from "../../component/textarea-keybindings"
 import path from "path"
@@ -322,18 +322,13 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
   })
 
   return (
-    <box
-      backgroundColor={theme.backgroundPanel}
-      border={["left"]}
-      borderColor={theme.error}
-      customBorderChars={SplitBorder.customBorderChars}
-    >
+    <box paddingLeft={1}>
       <box gap={1} paddingLeft={1} paddingRight={3} paddingTop={1} paddingBottom={1}>
-        <box flexDirection="row" gap={1} paddingLeft={1}>
-          <text fg={theme.error}>{"△"}</text>
+        <box flexDirection="row" gap={1}>
+          <text fg={theme.error}>⏺</text>
           <text fg={theme.text}>Reject permission</text>
         </box>
-        <box paddingLeft={1}>
+        <box paddingLeft={2}>
           <text fg={theme.textMuted}>Tell OpenCode what to do differently</text>
         </box>
       </box>
@@ -341,10 +336,9 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
         flexDirection={narrow() ? "column" : "row"}
         flexShrink={0}
         paddingTop={1}
-        paddingLeft={2}
+        paddingLeft={3}
         paddingRight={3}
         paddingBottom={1}
-        backgroundColor={theme.backgroundElement}
         justifyContent={narrow() ? "flex-start" : "space-between"}
         alignItems={narrow() ? "flex-start" : "center"}
         gap={1}
@@ -358,10 +352,10 @@ function RejectPrompt(props: { onConfirm: (message: string) => void; onCancel: (
           keyBindings={textareaKeybindings()}
         />
         <box flexDirection="row" gap={2} flexShrink={0}>
-          <text fg={theme.text}>
+          <text fg={theme.textMuted}>
             enter <span style={{ fg: theme.textMuted }}>confirm</span>
           </text>
-          <text fg={theme.text}>
+          <text fg={theme.textMuted}>
             esc <span style={{ fg: theme.textMuted }}>cancel</span>
           </text>
         </box>
@@ -429,12 +423,16 @@ function Prompt<const T extends Record<string, string>>(props: {
 
   const content = () => (
     <box
-      backgroundColor={theme.backgroundPanel}
-      border={["left"]}
-      borderColor={theme.warning}
-      customBorderChars={SplitBorder.customBorderChars}
+      paddingLeft={1}
       {...(store.expanded
-        ? { top: dimensions().height * -1 + 1, bottom: 1, left: 2, right: 2, position: "absolute" }
+        ? {
+            top: dimensions().height * -1 + 1,
+            bottom: 1,
+            left: 2,
+            right: 2,
+            position: "absolute",
+            backgroundColor: theme.background,
+          }
         : {
             top: 0,
             maxHeight: 15,
@@ -445,8 +443,8 @@ function Prompt<const T extends Record<string, string>>(props: {
           })}
     >
       <box gap={1} paddingLeft={1} paddingRight={3} paddingTop={1} paddingBottom={1} flexGrow={1}>
-        <box flexDirection="row" gap={1} paddingLeft={1} flexShrink={0}>
-          <text fg={theme.warning}>{"△"}</text>
+        <box flexDirection="row" gap={1} flexShrink={0}>
+          <text fg={theme.warning}>⏺</text>
           <text fg={theme.text}>{props.title}</text>
         </box>
         {props.body}
@@ -456,28 +454,26 @@ function Prompt<const T extends Record<string, string>>(props: {
         flexShrink={0}
         gap={1}
         paddingTop={1}
-        paddingLeft={2}
+        paddingLeft={3}
         paddingRight={3}
         paddingBottom={1}
-        backgroundColor={theme.backgroundElement}
         justifyContent={narrow() ? "flex-start" : "space-between"}
         alignItems={narrow() ? "flex-start" : "center"}
       >
-        <box flexDirection="row" gap={1} flexShrink={0}>
+        <box gap={0}>
           <For each={keys}>
-            {(option) => (
+            {(option, i) => (
               <box
-                paddingLeft={1}
-                paddingRight={1}
-                backgroundColor={option === store.selected ? theme.warning : theme.backgroundMenu}
+                flexDirection="row"
+                gap={1}
                 onMouseOver={() => setStore("selected", option)}
                 onMouseUp={() => {
                   setStore("selected", option)
                   props.onSelect(option)
                 }}
               >
-                <text fg={option === store.selected ? selectedForeground(theme, theme.warning) : theme.textMuted}>
-                  {props.options[option]}
+                <text fg={option === store.selected ? theme.text : theme.textMuted}>
+                  {option === store.selected ? "❯" : " "} {i() + 1}. {props.options[option]}
                 </text>
               </box>
             )}
@@ -485,15 +481,12 @@ function Prompt<const T extends Record<string, string>>(props: {
         </box>
         <box flexDirection="row" gap={2} flexShrink={0}>
           <Show when={props.fullscreen}>
-            <text fg={theme.text}>
+            <text fg={theme.textMuted}>
               {"ctrl+f"} <span style={{ fg: theme.textMuted }}>{hint()}</span>
             </text>
           </Show>
-          <text fg={theme.text}>
-            {"⇆"} <span style={{ fg: theme.textMuted }}>select</span>
-          </text>
-          <text fg={theme.text}>
-            enter <span style={{ fg: theme.textMuted }}>confirm</span>
+          <text fg={theme.textMuted}>
+            Esc to cancel <span style={{ fg: theme.textMuted }}>· Tab to amend</span>
           </text>
         </box>
       </box>

@@ -3,7 +3,7 @@ import { createEffect, createMemo, type JSX, onMount, createSignal, onCleanup, S
 import "opentui-spinner/solid"
 import { useLocal } from "@tui/context/local"
 import { useTheme } from "@tui/context/theme"
-import { EmptyBorder } from "@tui/component/border"
+
 import { useSDK } from "@tui/context/sdk"
 import { useRoute } from "@tui/context/route"
 import { useSync } from "@tui/context/sync"
@@ -779,23 +779,11 @@ export function Prompt(props: PromptProps) {
         promptPartTypeId={() => promptPartTypeId}
       />
       <box ref={(r) => (anchor = r)} visible={props.visible !== false}>
-        <box
-          border={["left"]}
-          borderColor={highlight()}
-          customBorderChars={{
-            ...EmptyBorder,
-            vertical: "┃",
-            bottomLeft: "╹",
-          }}
-        >
-          <box
-            paddingLeft={2}
-            paddingRight={2}
-            paddingTop={1}
-            flexShrink={0}
-            backgroundColor={theme.backgroundElement}
-            flexGrow={1}
-          >
+        <box flexDirection="row" alignItems="flex-start" paddingLeft={1}>
+          <text fg={highlight()} flexShrink={0}>
+            {store.mode === "shell" ? "! " : "❯ "}
+          </text>
+          <box flexGrow={1}>
             <textarea
               placeholder={props.sessionID ? undefined : `Ask anything... "${PLACEHOLDERS[store.placeholder]}"`}
               textColor={keybind.leader ? theme.textMuted : theme.text}
@@ -969,59 +957,45 @@ export function Prompt(props: PromptProps) {
                 }, 0)
               }}
               onMouseDown={(r: MouseEvent) => r.target?.focus()}
-              focusedBackgroundColor={theme.backgroundElement}
               cursorColor={theme.text}
               syntaxStyle={syntax()}
             />
-            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1}>
-              <text fg={highlight()}>
-                {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}{" "}
-              </text>
-              <Show when={store.mode === "normal"}>
-                <box flexDirection="row" gap={1}>
-                  <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
-                    {local.model.parsed().model}
-                  </text>
-                  <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
-                  <Show when={showVariant()}>
-                    <text fg={theme.textMuted}>·</text>
-                    <text>
-                      <span style={{ fg: theme.warning, bold: true }}>{local.model.variant.current()}</span>
-                    </text>
-                  </Show>
-                </box>
-              </Show>
-            </box>
           </box>
         </box>
-        <box
-          height={1}
-          border={["left"]}
-          borderColor={highlight()}
-          customBorderChars={{
-            ...EmptyBorder,
-            vertical: theme.backgroundElement.a !== 0 ? "╹" : " ",
-          }}
-        >
-          <box
-            height={1}
-            border={["bottom"]}
-            borderColor={theme.backgroundElement}
-            customBorderChars={
-              theme.backgroundElement.a !== 0
-                ? {
-                    ...EmptyBorder,
-                    horizontal: "▀",
-                  }
-                : {
-                    ...EmptyBorder,
-                    horizontal: " ",
-                  }
+        <box flexDirection="row" justifyContent="space-between" paddingLeft={3}>
+          <Show
+            when={status().type !== "idle"}
+            fallback={
+              <box flexDirection="row" gap={2}>
+                <text fg={theme.textMuted}>
+                  {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}
+                  <Show when={store.mode === "normal"}>
+                    {" · "}
+                    {local.model.parsed().model}
+                    <Show when={showVariant()}>
+                      {" · "}
+                      <span style={{ fg: theme.warning, bold: true }}>{local.model.variant.current()}</span>
+                    </Show>
+                  </Show>
+                </text>
+                <box flexGrow={1} />
+                <box gap={2} flexDirection="row" flexShrink={0}>
+                  <Switch>
+                    <Match when={store.mode === "normal"}>
+                      <text fg={theme.textMuted}>
+                        {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
+                      </text>
+                    </Match>
+                    <Match when={store.mode === "shell"}>
+                      <text fg={theme.textMuted}>
+                        esc <span style={{ fg: theme.textMuted }}>exit shell mode</span>
+                      </text>
+                    </Match>
+                  </Switch>
+                </box>
+              </box>
             }
-          />
-        </box>
-        <box flexDirection="row" justifyContent="space-between">
-          <Show when={status().type !== "idle"} fallback={<text />}>
+          >
             <box
               flexDirection="row"
               gap={1}
@@ -1029,11 +1003,9 @@ export function Prompt(props: PromptProps) {
               justifyContent={status().type === "retry" ? "space-between" : "flex-start"}
             >
               <box flexShrink={0} flexDirection="row" gap={1}>
-                <box marginLeft={1}>
-                  <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>[⋯]</text>}>
-                    <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={40} />
-                  </Show>
-                </box>
+                <Show when={kv.get("animations_enabled", true)} fallback={<text fg={theme.textMuted}>⋯</text>}>
+                  <spinner color={spinnerDef().color} frames={spinnerDef().frames} interval={40} />
+                </Show>
                 <box flexDirection="row" gap={1} flexShrink={0}>
                   {(() => {
                     const retry = createMemo(() => {
@@ -1093,36 +1065,12 @@ export function Prompt(props: PromptProps) {
                   })()}
                 </box>
               </box>
-              <text fg={store.interrupt > 0 ? theme.primary : theme.text}>
+              <text fg={store.interrupt > 0 ? theme.primary : theme.textMuted}>
                 esc{" "}
                 <span style={{ fg: store.interrupt > 0 ? theme.primary : theme.textMuted }}>
                   {store.interrupt > 0 ? "again to interrupt" : "interrupt"}
                 </span>
               </text>
-            </box>
-          </Show>
-          <Show when={status().type !== "retry"}>
-            <box gap={2} flexDirection="row">
-              <Switch>
-                <Match when={store.mode === "normal"}>
-                  <Show when={local.model.variant.list().length > 0}>
-                    <text fg={theme.text}>
-                      {keybind.print("variant_cycle")} <span style={{ fg: theme.textMuted }}>variants</span>
-                    </text>
-                  </Show>
-                  <text fg={theme.text}>
-                    {keybind.print("agent_cycle")} <span style={{ fg: theme.textMuted }}>agents</span>
-                  </text>
-                  <text fg={theme.text}>
-                    {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
-                  </text>
-                </Match>
-                <Match when={store.mode === "shell"}>
-                  <text fg={theme.text}>
-                    esc <span style={{ fg: theme.textMuted }}>exit shell mode</span>
-                  </text>
-                </Match>
-              </Switch>
             </box>
           </Show>
         </box>

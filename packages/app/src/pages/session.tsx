@@ -86,6 +86,21 @@ const setSessionHandoff = (key: string, patch: Partial<HandoffSession>) => {
   touch(handoff.session, key, { ...prev, ...patch })
 }
 
+const readPromptParam = () => {
+  if (typeof window === "undefined") return
+  const value = new URLSearchParams(window.location.search).get("prompt")?.trim()
+  if (!value) return
+  return value
+}
+
+const clearPromptParam = () => {
+  if (typeof window === "undefined") return
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has("prompt")) return
+  url.searchParams.delete("prompt")
+  window.history.replaceState({}, "", url)
+}
+
 export default function Page() {
   const layout = useLayout()
   const local = useLocal()
@@ -1490,6 +1505,20 @@ export default function Page() {
     if (!prompt.ready()) return
     setSessionHandoff(sessionKey(), { prompt: previewPrompt() })
   })
+
+  createEffect(
+    on(
+      () => [params.dir, params.id, prompt.ready()] as const,
+      () => {
+        if (!prompt.ready()) return
+        const value = readPromptParam()
+        if (!value) return
+        clearPromptParam()
+        if (prompt.dirty()) return
+        prompt.set([{ type: "text", content: value, start: 0, end: value.length }], value.length)
+      },
+    ),
+  )
 
   createEffect(() => {
     if (!terminal.ready()) return

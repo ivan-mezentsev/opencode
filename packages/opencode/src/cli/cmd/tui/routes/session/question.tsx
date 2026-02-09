@@ -6,7 +6,7 @@ import { useKeybind } from "../../context/keybind"
 import { selectedForeground, tint, useTheme } from "../../context/theme"
 import type { QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2"
 import { useSDK } from "../../context/sdk"
-import { SplitBorder } from "../../component/border"
+
 import { useTextareaKeybindings } from "../../component/textarea-keybindings"
 import { useDialog } from "../../ui/dialog"
 
@@ -251,12 +251,7 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
   })
 
   return (
-    <box
-      backgroundColor={theme.backgroundPanel}
-      border={["left"]}
-      borderColor={theme.accent}
-      customBorderChars={SplitBorder.customBorderChars}
-    >
+    <box paddingLeft={1}>
       <box gap={1} paddingLeft={1} paddingRight={3} paddingTop={1} paddingBottom={1}>
         <Show when={!single()}>
           <box flexDirection="row" gap={1} paddingLeft={1}>
