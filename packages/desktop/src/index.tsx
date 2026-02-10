@@ -48,6 +48,14 @@ type SshPrompt = { id: string; prompt: string }
 const sshPromptEvent = "opencode:ssh-prompt"
 const sshPrompts: SshPrompt[] = []
 
+type DesktopPlatform = Platform & {
+  serverKey: (url: string) => string
+  isServerLocal: (url: string) => boolean
+  sshConnect: (command: string) => Promise<{ url: string; key: string; password: string | null }>
+  sshDisconnect: (key: string) => Promise<void>
+  wsAuth: (url: string) => { username: string; password: string } | null
+}
+
 void listen<SshPrompt>("ssh_prompt", (event) => {
   sshPrompts.push(event.payload)
   window.dispatchEvent(new CustomEvent(sshPromptEvent))
@@ -92,7 +100,7 @@ const listenForDeepLinks = async () => {
 const createPlatform = (
   password: Accessor<string | null>,
   sshState: { get: Accessor<boolean>; set: (value: boolean) => void },
-): Platform => ({
+): DesktopPlatform => ({
   platform: "desktop",
   os: (() => {
     const type = ostype()
