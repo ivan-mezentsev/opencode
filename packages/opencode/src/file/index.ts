@@ -9,6 +9,7 @@ import ignore from "ignore"
 import { Log } from "../util/log"
 import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
+import { FFF } from "./fff"
 import { Ripgrep } from "./ripgrep"
 import fuzzysort from "fuzzysort"
 import { Global } from "../global"
@@ -547,35 +548,42 @@ export namespace File {
     const kind = input.type ?? (input.dirs === false ? "file" : "all")
     log.info("search", { query, kind })
 
-    const result = await state().then((x) => x.files())
-
-    const hidden = (item: string) => {
-      const normalized = item.replaceAll("\\", "/").replace(/\/+$/, "")
-      return normalized.split("/").some((p) => p.startsWith(".") && p.length > 1)
-    }
-    const preferHidden = query.startsWith(".") || query.includes("/.")
-    const sortHiddenLast = (items: string[]) => {
-      if (preferHidden) return items
-      const visible: string[] = []
-      const hiddenItems: string[] = []
-      for (const item of items) {
-        const isHidden = hidden(item)
-        if (isHidden) hiddenItems.push(item)
-        if (!isHidden) visible.push(item)
-      }
-      return [...visible, ...hiddenItems]
-    }
     if (!query) {
+      const result = await state().then((x) => x.files())
       if (kind === "file") return result.files.slice(0, limit)
-      return sortHiddenLast(result.dirs.toSorted()).slice(0, limit)
+      return result.dirs.toSorted().slice(0, limit)
     }
 
-    const items =
-      kind === "file" ? result.files : kind === "directory" ? result.dirs : [...result.files, ...result.dirs]
+    if (kind === "directory") {
+      const result = await state().then((x) => x.files())
+      const searchLimit = limit * 20
+      const output = fuzzysort
+        .go(query, result.dirs, { limit: searchLimit })
+        .map((r) => r.target)
+        .slice(0, limit)
+      log.info("search", { query, kind, results: output.length })
+      return output
+    }
 
-    const searchLimit = kind === "directory" && !preferHidden ? limit * 20 : limit
-    const sorted = fuzzysort.go(query, items, { limit: searchLimit }).map((r) => r.target)
-    const output = kind === "directory" ? sortHiddenLast(sorted).slice(0, limit) : sorted
+    const files = await FFF.search({
+      cwd: Instance.directory,
+      query,
+      limit,
+    })
+    const fileOutput = files.slice(0, limit)
+    if (kind === "file") {
+      log.info("search", { query, kind, results: fileOutput.length })
+      return fileOutput
+    }
+
+    const result = await state().then((x) => x.files())
+    const remaining = limit - fileOutput.length
+    if (remaining <= 0) {
+      log.info("search", { query, kind, results: fileOutput.length })
+      return fileOutput
+    }
+    const sorted = fuzzysort.go(query, result.dirs, { limit: remaining }).map((r) => r.target)
+    const output = fileOutput.concat(sorted)
 
     log.info("search", { query, kind, results: output.length })
     return output
