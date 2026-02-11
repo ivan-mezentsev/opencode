@@ -177,6 +177,7 @@ export namespace JsonMigration {
           time_updated: data.time?.updated ?? now,
           time_initialized: data.time?.initialized,
           sandboxes: data.sandboxes ?? [],
+          commands: data.commands,
         })
       }
       stats.projects += insert(projectValues, ProjectTable, "project")

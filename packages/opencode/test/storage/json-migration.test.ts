@@ -128,6 +128,49 @@ describe("JSON to SQLite migration", () => {
     expect(projects[0].sandboxes).toEqual(["/test/sandbox"])
   })
 
+  test("migrates project with commands", async () => {
+    await writeProject(storageDir, {
+      id: "proj_with_commands",
+      worktree: "/test/path",
+      vcs: "git",
+      name: "Project With Commands",
+      time: { created: 1700000000000, updated: 1700000001000 },
+      sandboxes: ["/test/sandbox"],
+      commands: { start: "npm run dev" },
+    })
+
+    const stats = await JsonMigration.run(sqlite)
+
+    expect(stats?.projects).toBe(1)
+
+    const db = drizzle({ client: sqlite })
+    const projects = db.select().from(ProjectTable).all()
+    expect(projects.length).toBe(1)
+    expect(projects[0].id).toBe("proj_with_commands")
+    expect(projects[0].commands).toEqual({ start: "npm run dev" })
+  })
+
+  test("migrates project without commands field", async () => {
+    await writeProject(storageDir, {
+      id: "proj_no_commands",
+      worktree: "/test/path",
+      vcs: "git",
+      name: "Project Without Commands",
+      time: { created: 1700000000000, updated: 1700000001000 },
+      sandboxes: [],
+    })
+
+    const stats = await JsonMigration.run(sqlite)
+
+    expect(stats?.projects).toBe(1)
+
+    const db = drizzle({ client: sqlite })
+    const projects = db.select().from(ProjectTable).all()
+    expect(projects.length).toBe(1)
+    expect(projects[0].id).toBe("proj_no_commands")
+    expect(projects[0].commands).toBeNull()
+  })
+
   test("migrates session with individual columns", async () => {
     await writeProject(storageDir, {
       id: "proj_test123abc",
