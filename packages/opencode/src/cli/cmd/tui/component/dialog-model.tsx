@@ -127,6 +127,7 @@ export function DialogModel(props: { providerID?: string }) {
             (x) => x.title,
           ),
         )
+        return items
       }),
     )
 
