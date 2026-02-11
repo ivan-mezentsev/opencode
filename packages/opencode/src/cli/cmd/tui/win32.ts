@@ -55,32 +55,64 @@ export function win32IgnoreCtrlC() {
   k32!.symbols.SetConsoleCtrlHandler(null, 1)
 }
 
+let unhook: (() => void) | undefined
+
 /**
- * Continuously enforce ENABLE_PROCESSED_INPUT=off on the console.
+ * Keep ENABLE_PROCESSED_INPUT disabled.
  *
- * opentui reconfigures the console mode through native calls (not
- * process.stdin.setRawMode) so we cannot intercept them. Instead we
- * poll at a low frequency and re-clear the flag when needed.
+ * On Windows, Ctrl+C becomes a CTRL_C_EVENT (instead of stdin input) when
+ * ENABLE_PROCESSED_INPUT is set. Various runtimes can re-apply console modes
+ * (sometimes on a later tick), and the flag is console-global, not per-process.
  *
- * Because ENABLE_PROCESSED_INPUT is a console-level flag (not per-process),
- * keeping it cleared protects every process attached to this console,
- * including the parent `bun run` wrapper that we can't otherwise control.
- *
- * The fast-path (GetConsoleMode + bitmask check) is sub-microsecond;
- * SetConsoleMode only fires when something re-enabled the flag.
+ * We combine:
+ * - A `setRawMode(...)` hook to re-clear after known raw-mode toggles.
+ * - A low-frequency poll as a backstop for native/external mode changes.
  */
-export function win32EnforceCtrlCGuard() {
+export function win32InstallCtrlCGuard() {
   if (process.platform !== "win32") return
   if (!process.stdin.isTTY) return
   if (!load()) return
+  if (unhook) return unhook
+
+  const stdin = process.stdin as any
+  const original = stdin.setRawMode
 
   const handle = k32!.symbols.GetStdHandle(STD_INPUT_HANDLE)
   const buf = new Uint32Array(1)
 
-  setInterval(() => {
+  const enforce = () => {
     if (k32!.symbols.GetConsoleMode(handle, ptr(buf)) === 0) return
     const mode = buf[0]!
     if ((mode & ENABLE_PROCESSED_INPUT) === 0) return
     k32!.symbols.SetConsoleMode(handle, mode & ~ENABLE_PROCESSED_INPUT)
-  }, 100)
+  }
+
+  // Some runtimes can re-apply console modes on the next tick; enforce twice.
+  const later = () => {
+    enforce()
+    setImmediate(enforce)
+  }
+
+  if (typeof original === "function") {
+    stdin.setRawMode = (mode: boolean) => {
+      const result = original.call(stdin, mode)
+      later()
+      return result
+    }
+  }
+
+  // Ensure it's cleared immediately too (covers any earlier mode changes).
+  later()
+
+  const interval = setInterval(enforce, 100)
+
+  unhook = () => {
+    clearInterval(interval)
+    if (typeof original === "function") {
+      stdin.setRawMode = original
+    }
+    unhook = undefined
+  }
+
+  return unhook
 }

@@ -3,7 +3,7 @@ import { Clipboard } from "@tui/util/clipboard"
 import { TextAttributes } from "@opentui/core"
 import { RouteProvider, useRoute } from "@tui/context/route"
 import { Switch, Match, createEffect, untrack, ErrorBoundary, createSignal, onMount, batch, Show, on } from "solid-js"
-import { win32DisableProcessedInput, win32IgnoreCtrlC, win32EnforceCtrlCGuard } from "./win32"
+import { win32DisableProcessedInput, win32IgnoreCtrlC, win32InstallCtrlCGuard } from "./win32"
 import { Installation } from "@/installation"
 import { Flag } from "@/flag/flag"
 import { DialogProvider, useDialog } from "@tui/ui/dialog"
@@ -111,6 +111,7 @@ export function tui(input: {
 }) {
   // promise to prevent immediate exit
   return new Promise<void>(async (resolve) => {
+    const unguard = win32InstallCtrlCGuard()
     win32DisableProcessedInput()
     win32IgnoreCtrlC()
 
@@ -121,6 +122,7 @@ export function tui(input: {
     win32DisableProcessedInput()
 
     const onExit = async () => {
+      unguard?.()
       await input.onExit?.()
       resolve()
     }
@@ -247,10 +249,6 @@ function App() {
 
   const args = useArgs()
   onMount(() => {
-    // opentui reconfigures console mode via native calls which re-enable
-    // ENABLE_PROCESSED_INPUT. Poll and re-clear it so the parent `bun run`
-    // wrapper isn't killed by CTRL_C_EVENT.
-    win32EnforceCtrlCGuard()
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
       if (args.model) {
