@@ -68,6 +68,7 @@ export namespace Project {
         initialized: row.time_initialized ?? undefined,
       },
       sandboxes: row.sandboxes,
+      commands: row.commands ?? undefined,
     }
   }
 
@@ -242,6 +243,7 @@ export namespace Project {
       time_updated: result.time.updated,
       time_initialized: result.time.initialized,
       sandboxes: result.sandboxes,
+      commands: result.commands,
     }
     const updateSet = {
       worktree: result.worktree,
@@ -252,6 +254,7 @@ export namespace Project {
       time_updated: result.time.updated,
       time_initialized: result.time.initialized,
       sandboxes: result.sandboxes,
+      commands: result.commands,
     }
     Database.use((db) =>
       db.insert(ProjectTable).values(insert).onConflictDoUpdate({ target: ProjectTable.id, set: updateSet }).run(),
@@ -360,6 +363,7 @@ export namespace Project {
             name: input.name,
             icon_url: input.icon?.url,
             icon_color: input.icon?.color,
+            commands: input.commands,
             time_updated: Date.now(),
           })
           .where(eq(ProjectTable.id, input.projectID))
