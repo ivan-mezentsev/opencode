@@ -21,6 +21,8 @@ export namespace UI {
     TEXT_SUCCESS_BOLD: "\x1b[92m\x1b[1m",
     TEXT_INFO: "\x1b[94m",
     TEXT_INFO_BOLD: "\x1b[94m\x1b[1m",
+    TEXT_LOGO_SHADOW: "\x1b[2;37m",
+    TEXT_LOGO_FG: "\x1b[39m",
   }
 
   export function println(...message: string[]) {
