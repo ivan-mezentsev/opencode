@@ -548,43 +548,55 @@ export namespace File {
     const kind = input.type ?? "all"
     log.info("search", { query, kind })
 
-    if (!query) {
-      const result = await state().then((x) => x.files())
-      if (kind === "file") return result.files.slice(0, limit)
-      return result.dirs.toSorted().slice(0, limit)
+    const files = await FFF.search({
+      cwd: Instance.directory,
+      query,
+      limit: kind === "all" || kind === "directory" ? limit * 20 : limit,
+    })
+    const set = new Set<string>()
+    for (const file of files) {
+      let dir = path.dirname(file)
+      while (true) {
+        if (dir === ".") break
+        const next = path.dirname(dir)
+        set.add(dir + "/")
+        if (next === dir) break
+        dir = next
+      }
     }
+    const allDirs = Array.from(set)
 
-    if (kind === "directory") {
-      const result = await state().then((x) => x.files())
-      const searchLimit = limit * 20
-      const output = fuzzysort
-        .go(query, result.dirs, { limit: searchLimit })
-        .map((r) => r.target)
-        .slice(0, limit)
+    if (!query) {
+      const output = kind === "file" ? files.slice(0, limit) : allDirs.toSorted().slice(0, limit)
       log.info("search", { query, kind, results: output.length })
       return output
     }
 
-    const files = await FFF.search({
-      cwd: Instance.directory,
-      query,
-      limit,
-    })
-    const fileOutput = files.slice(0, limit)
+    if (kind === "directory") {
+      const ranked: string[] = []
+      for (const item of fuzzysort.go(query, allDirs, { limit: limit * 20 })) {
+        ranked.push(item.target)
+      }
+      const output = ranked.slice(0, limit)
+      log.info("search", { query, kind, results: output.length })
+      return output
+    }
+
     if (kind === "file") {
-      log.info("search", { query, kind, results: fileOutput.length })
-      return fileOutput
+      const output = files.slice(0, limit)
+      log.info("search", { query, kind, results: output.length })
+      return output
     }
 
-    const result = await state().then((x) => x.files())
-    const remaining = limit - fileOutput.length
-    if (remaining <= 0) {
-      log.info("search", { query, kind, results: fileOutput.length })
-      return fileOutput
+    const rankedDirs: string[] = []
+    for (const item of fuzzysort.go(query, allDirs, { limit })) {
+      rankedDirs.push(item.target)
     }
-    const sorted = fuzzysort.go(query, result.dirs, { limit: remaining }).map((r) => r.target)
-    const output = fileOutput.concat(sorted)
-
+    const merged = files.slice(0, limit).concat(rankedDirs)
+    const output: string[] = []
+    for (const item of fuzzysort.go(query, merged, { limit })) {
+      output.push(item.target)
+    }
     log.info("search", { query, kind, results: output.length })
     return output
   }
