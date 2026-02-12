@@ -1,24 +1,20 @@
-# Stage 1: Install dependencies
-FROM oven/bun:1.2-alpine AS deps
-WORKDIR /app
-COPY package.json bun.lock* ./
-COPY web/package.json web/
-COPY discord-bot/package.json discord-bot/
-RUN bun install --frozen-lockfile
+FROM oven/bun:1.3.9-alpine
 
-# Stage 2: Production image
-FROM oven/bun:1.2-alpine AS runner
 WORKDIR /app
 
-COPY package.json bun.lock* ./
-COPY web/package.json web/
-COPY discord-bot/package.json discord-bot/
-RUN bun install --production --frozen-lockfile
+COPY package.json ./
+RUN bun install --production
 
-# Copy shared DB schema (discord-bot imports from main project)
-COPY src/db/schema.ts src/db/schema.ts
+COPY src ./src
 
-# Copy discord bot source
-COPY discord-bot/src/ discord-bot/src/
+ENV NODE_ENV=production
+ENV DATABASE_PATH=/data/discord.sqlite
+ENV HEALTH_HOST=0.0.0.0
+ENV HEALTH_PORT=8787
 
-CMD ["bun", "run", "discord-bot/src/index.ts"]
+RUN mkdir -p /data
+
+VOLUME ["/data"]
+EXPOSE 8787
+
+CMD ["bun", "run", "src/index.ts"]
