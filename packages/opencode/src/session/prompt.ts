@@ -601,13 +601,19 @@ export namespace SessionPrompt {
         model,
         tools: lastUser.tools,
         processor,
-        outputFormat: lastUser.format ?? { type: "text" },
-        onStructuredOutputSuccess: (output) => {
-          structuredOutput = output
-        },
         bypassAgentCheck,
         messages: msgs,
       })
+
+      // Inject StructuredOutput tool if JSON schema mode enabled
+      if (lastUser.format?.type === "json_schema") {
+        tools["StructuredOutput"] = createStructuredOutputTool({
+          schema: lastUser.format.schema,
+          onSuccess(output) {
+            structuredOutput = output
+          },
+        })
+      }
 
       if (step === 1) {
         SessionSummary.summarize({
@@ -641,8 +647,8 @@ export namespace SessionPrompt {
 
       // Build system prompt, adding structured output instruction if needed
       const system = [...(await SystemPrompt.environment(model)), ...(await InstructionPrompt.system())]
-      const outputFormat = lastUser.format ?? { type: "text" }
-      if (outputFormat.type === "json_schema") {
+      const format = lastUser.format ?? { type: "text" }
+      if (format.type === "json_schema") {
         system.push(STRUCTURED_OUTPUT_SYSTEM_PROMPT)
       }
 
@@ -665,7 +671,7 @@ export namespace SessionPrompt {
         ],
         tools,
         model,
-        toolChoice: outputFormat.type === "json_schema" ? "required" : undefined,
+        toolChoice: format.type === "json_schema" ? "required" : undefined,
       })
 
       // If structured output was captured, save it and exit immediately
@@ -681,7 +687,7 @@ export namespace SessionPrompt {
       const modelFinished = processor.message.finish && !["tool-calls", "unknown"].includes(processor.message.finish)
 
       if (modelFinished && !processor.message.error) {
-        if (outputFormat.type === "json_schema") {
+        if (format.type === "json_schema") {
           // Model stopped without calling StructuredOutput tool
           processor.message.error = new MessageV2.StructuredOutputError({
             message: "Model did not produce structured output",
@@ -729,8 +735,6 @@ export namespace SessionPrompt {
     session: Session.Info
     tools?: Record<string, boolean>
     processor: SessionProcessor.Info
-    outputFormat: MessageV2.OutputFormat
-    onStructuredOutputSuccess?: (output: unknown) => void
     bypassAgentCheck: boolean
     messages: MessageV2.WithParts[]
   }) {
@@ -900,14 +904,6 @@ export namespace SessionPrompt {
         }
       }
       tools[key] = item
-    }
-
-    // Inject StructuredOutput tool if JSON schema mode enabled
-    if (input.outputFormat.type === "json_schema" && input.onStructuredOutputSuccess) {
-      tools["StructuredOutput"] = createStructuredOutputTool({
-        schema: input.outputFormat.schema,
-        onSuccess: input.onStructuredOutputSuccess,
-      })
     }
 
     return tools
