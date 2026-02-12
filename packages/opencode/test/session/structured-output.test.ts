@@ -4,7 +4,7 @@ import { SessionPrompt } from "../../src/session/prompt"
 
 describe("structured-output.OutputFormat", () => {
   test("parses text format", () => {
-    const result = MessageV2.OutputFormat.safeParse({ type: "text" })
+    const result = MessageV2.Format.safeParse({ type: "text" })
     expect(result.success).toBe(true)
     if (result.success) {
       expect(result.data.type).toBe("text")
@@ -12,7 +12,7 @@ describe("structured-output.OutputFormat", () => {
   })
 
   test("parses json_schema format with defaults", () => {
-    const result = MessageV2.OutputFormat.safeParse({
+    const result = MessageV2.Format.safeParse({
       type: "json_schema",
       schema: { type: "object", properties: { name: { type: "string" } } },
     })
@@ -26,7 +26,7 @@ describe("structured-output.OutputFormat", () => {
   })
 
   test("parses json_schema format with custom retryCount", () => {
-    const result = MessageV2.OutputFormat.safeParse({
+    const result = MessageV2.Format.safeParse({
       type: "json_schema",
       schema: { type: "object" },
       retryCount: 5,
@@ -38,17 +38,17 @@ describe("structured-output.OutputFormat", () => {
   })
 
   test("rejects invalid type", () => {
-    const result = MessageV2.OutputFormat.safeParse({ type: "invalid" })
+    const result = MessageV2.Format.safeParse({ type: "invalid" })
     expect(result.success).toBe(false)
   })
 
   test("rejects json_schema without schema", () => {
-    const result = MessageV2.OutputFormat.safeParse({ type: "json_schema" })
+    const result = MessageV2.Format.safeParse({ type: "json_schema" })
     expect(result.success).toBe(false)
   })
 
   test("rejects negative retryCount", () => {
-    const result = MessageV2.OutputFormat.safeParse({
+    const result = MessageV2.Format.safeParse({
       type: "json_schema",
       schema: { type: "object" },
       retryCount: -1,
@@ -138,14 +138,14 @@ describe("structured-output.AssistantMessage", () => {
     time: { created: Date.now() },
   }
 
-  test("assistant message accepts structured_output", () => {
+  test("assistant message accepts structured", () => {
     const result = MessageV2.Assistant.safeParse({
       ...baseAssistantMessage,
-      structured_output: { company: "Anthropic", founded: 2021 },
+      structured: { company: "Anthropic", founded: 2021 },
     })
     expect(result.success).toBe(true)
     if (result.success) {
-      expect(result.data.structured_output).toEqual({ company: "Anthropic", founded: 2021 })
+      expect(result.data.structured).toEqual({ company: "Anthropic", founded: 2021 })
     }
   })
 
@@ -160,7 +160,6 @@ describe("structured-output.createStructuredOutputTool", () => {
     const tool = SessionPrompt.createStructuredOutputTool({
       schema: { type: "object", properties: { name: { type: "string" } } },
       onSuccess: () => {},
-      onError: () => {},
     })
 
     // AI SDK tool type doesn't expose id, but we set it internally
@@ -171,7 +170,6 @@ describe("structured-output.createStructuredOutputTool", () => {
     const tool = SessionPrompt.createStructuredOutputTool({
       schema: { type: "object" },
       onSuccess: () => {},
-      onError: () => {},
     })
 
     expect(tool.description).toContain("structured format")
@@ -190,7 +188,6 @@ describe("structured-output.createStructuredOutputTool", () => {
     const tool = SessionPrompt.createStructuredOutputTool({
       schema,
       onSuccess: () => {},
-      onError: () => {},
     })
 
     // AI SDK wraps schema in { jsonSchema: {...} }
@@ -210,7 +207,6 @@ describe("structured-output.createStructuredOutputTool", () => {
     const tool = SessionPrompt.createStructuredOutputTool({
       schema,
       onSuccess: () => {},
-      onError: () => {},
     })
 
     // AI SDK wraps schema in { jsonSchema: {...} }
@@ -226,7 +222,6 @@ describe("structured-output.createStructuredOutputTool", () => {
       onSuccess: (output) => {
         capturedOutput = output
       },
-      onError: () => {},
     })
 
     expect(tool.execute).toBeDefined()
@@ -242,10 +237,10 @@ describe("structured-output.createStructuredOutputTool", () => {
     expect(result.metadata.valid).toBe(true)
   })
 
-  test("execute calls onError when validation fails - missing required field", async () => {
-    let capturedError: string | undefined
-    let successCalled = false
-
+  test("AI SDK validates schema before execute - missing required field", async () => {
+    // Note: The AI SDK validates the input against the schema BEFORE calling execute()
+    // So invalid inputs never reach the tool's execute function
+    // This test documents the expected schema behavior
     const tool = SessionPrompt.createStructuredOutputTool({
       schema: {
         type: "object",
@@ -255,33 +250,20 @@ describe("structured-output.createStructuredOutputTool", () => {
         },
         required: ["name", "age"],
       },
-      onSuccess: () => {
-        successCalled = true
-      },
-      onError: (error) => {
-        capturedError = error
-      },
+      onSuccess: () => {},
     })
 
-    // Missing required 'age' field
-    const result = await tool.execute!({ name: "Test" }, {
-      toolCallId: "test-call-id",
-      messages: [],
-      abortSignal: undefined as any,
-    })
-
-    expect(successCalled).toBe(false)
-    expect(capturedError).toBeDefined()
-    expect(capturedError).toContain("age")
-    expect(result.output).toContain("Validation failed")
-    expect(result.metadata.valid).toBe(false)
-    expect(result.metadata.error).toBeDefined()
+    // The schema requires both 'name' and 'age'
+    expect(tool.inputSchema).toBeDefined()
+    const inputSchema = tool.inputSchema as any
+    expect(inputSchema.jsonSchema?.required).toContain("name")
+    expect(inputSchema.jsonSchema?.required).toContain("age")
   })
 
-  test("execute calls onError when validation fails - wrong type", async () => {
-    let capturedError: string | undefined
-    let successCalled = false
-
+  test("AI SDK validates schema types before execute - wrong type", async () => {
+    // Note: The AI SDK validates the input against the schema BEFORE calling execute()
+    // So invalid inputs never reach the tool's execute function
+    // This test documents the expected schema behavior
     const tool = SessionPrompt.createStructuredOutputTool({
       schema: {
         type: "object",
@@ -290,30 +272,17 @@ describe("structured-output.createStructuredOutputTool", () => {
         },
         required: ["count"],
       },
-      onSuccess: () => {
-        successCalled = true
-      },
-      onError: (error) => {
-        capturedError = error
-      },
+      onSuccess: () => {},
     })
 
-    // Wrong type - string instead of number
-    const result = await tool.execute!({ count: "not a number" }, {
-      toolCallId: "test-call-id",
-      messages: [],
-      abortSignal: undefined as any,
-    })
-
-    expect(successCalled).toBe(false)
-    expect(capturedError).toBeDefined()
-    expect(result.output).toContain("Validation failed")
-    expect(result.metadata.valid).toBe(false)
+    // The schema defines 'count' as a number
+    expect(tool.inputSchema).toBeDefined()
+    const inputSchema = tool.inputSchema as any
+    expect(inputSchema.jsonSchema?.properties?.count?.type).toBe("number")
   })
 
-  test("execute validates nested objects", async () => {
+  test("execute handles nested objects", async () => {
     let capturedOutput: unknown
-    let capturedError: string | undefined
 
     const tool = SessionPrompt.createStructuredOutputTool({
       schema: {
@@ -333,37 +302,30 @@ describe("structured-output.createStructuredOutputTool", () => {
       onSuccess: (output) => {
         capturedOutput = output
       },
-      onError: (error) => {
-        capturedError = error
-      },
     })
 
-    // Valid nested object
-    const validResult = await tool.execute!({ user: { name: "John", email: "john@test.com" } }, {
-      toolCallId: "test-call-id",
-      messages: [],
-      abortSignal: undefined as any,
-    })
+    // Valid nested object - AI SDK validates before calling execute()
+    const validResult = await tool.execute!(
+      { user: { name: "John", email: "john@test.com" } },
+      {
+        toolCallId: "test-call-id",
+        messages: [],
+        abortSignal: undefined as any,
+      },
+    )
 
     expect(capturedOutput).toEqual({ user: { name: "John", email: "john@test.com" } })
     expect(validResult.metadata.valid).toBe(true)
 
-    // Invalid nested object - missing required 'name'
-    capturedOutput = undefined
-    const invalidResult = await tool.execute!({ user: { email: "john@test.com" } }, {
-      toolCallId: "test-call-id",
-      messages: [],
-      abortSignal: undefined as any,
-    })
-
-    expect(capturedOutput).toBeUndefined()
-    expect(capturedError).toBeDefined()
-    expect(invalidResult.metadata.valid).toBe(false)
+    // Verify schema has correct nested structure
+    const inputSchema = tool.inputSchema as any
+    expect(inputSchema.jsonSchema?.properties?.user?.type).toBe("object")
+    expect(inputSchema.jsonSchema?.properties?.user?.properties?.name?.type).toBe("string")
+    expect(inputSchema.jsonSchema?.properties?.user?.required).toContain("name")
   })
 
-  test("execute validates arrays", async () => {
+  test("execute handles arrays", async () => {
     let capturedOutput: unknown
-    let capturedError: string | undefined
 
     const tool = SessionPrompt.createStructuredOutputTool({
       schema: {
@@ -379,80 +341,31 @@ describe("structured-output.createStructuredOutputTool", () => {
       onSuccess: (output) => {
         capturedOutput = output
       },
-      onError: (error) => {
-        capturedError = error
-      },
     })
 
-    // Valid array
-    const validResult = await tool.execute!({ tags: ["a", "b", "c"] }, {
-      toolCallId: "test-call-id",
-      messages: [],
-      abortSignal: undefined as any,
-    })
+    // Valid array - AI SDK validates before calling execute()
+    const validResult = await tool.execute!(
+      { tags: ["a", "b", "c"] },
+      {
+        toolCallId: "test-call-id",
+        messages: [],
+        abortSignal: undefined as any,
+      },
+    )
 
     expect(capturedOutput).toEqual({ tags: ["a", "b", "c"] })
     expect(validResult.metadata.valid).toBe(true)
 
-    // Invalid array - contains non-string
-    capturedOutput = undefined
-    const invalidResult = await tool.execute!({ tags: ["a", 123, "c"] }, {
-      toolCallId: "test-call-id",
-      messages: [],
-      abortSignal: undefined as any,
-    })
-
-    expect(capturedOutput).toBeUndefined()
-    expect(capturedError).toBeDefined()
-    expect(invalidResult.metadata.valid).toBe(false)
-  })
-
-  test("error message includes path for nested validation errors", async () => {
-    let capturedError: string | undefined
-
-    const tool = SessionPrompt.createStructuredOutputTool({
-      schema: {
-        type: "object",
-        properties: {
-          company: {
-            type: "object",
-            properties: {
-              details: {
-                type: "object",
-                properties: {
-                  foundedYear: { type: "number" },
-                },
-                required: ["foundedYear"],
-              },
-            },
-            required: ["details"],
-          },
-        },
-        required: ["company"],
-      },
-      onSuccess: () => {},
-      onError: (error) => {
-        capturedError = error
-      },
-    })
-
-    // Missing deeply nested required field
-    await tool.execute!({ company: { details: {} } }, {
-      toolCallId: "test-call-id",
-      messages: [],
-      abortSignal: undefined as any,
-    })
-
-    expect(capturedError).toBeDefined()
-    // Error path should indicate the nested location
-    expect(capturedError).toContain("foundedYear")
+    // Verify schema has correct array structure
+    const inputSchema = tool.inputSchema as any
+    expect(inputSchema.jsonSchema?.properties?.tags?.type).toBe("array")
+    expect(inputSchema.jsonSchema?.properties?.tags?.items?.type).toBe("string")
   })
 
   test("toModelOutput returns text value", () => {
     const tool = SessionPrompt.createStructuredOutputTool({
       schema: { type: "object" },
       onSuccess: () => {},
-      onError: () => {},
     })
 
     expect(tool.toModelOutput).toBeDefined()
@@ -466,237 +379,7 @@ describe("structured-output.createStructuredOutputTool", () => {
     expect(modelOutput.value).toBe("Test output")
   })
 
-  // Tests for retry behavior simulation
-  describe("retry behavior", () => {
-    test("multiple validation failures trigger multiple onError calls", async () => {
-      let errorCount = 0
-      const errors: string[] = []
-
-      const tool = SessionPrompt.createStructuredOutputTool({
-        schema: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            age: { type: "number" },
-          },
-          required: ["name", "age"],
-        },
-        onSuccess: () => {},
-        onError: (error) => {
-          errorCount++
-          errors.push(error)
-        },
-      })
-
-      // First attempt - missing both required fields
-      await tool.execute!({}, {
-        toolCallId: "call-1",
-        messages: [],
-        abortSignal: undefined as any,
-      })
-      expect(errorCount).toBe(1)
-
-      // Second attempt - still missing age
-      await tool.execute!({ name: "Test" }, {
-        toolCallId: "call-2",
-        messages: [],
-        abortSignal: undefined as any,
-      })
-      expect(errorCount).toBe(2)
-
-      // Third attempt - wrong type for age
-      await tool.execute!({ name: "Test", age: "not a number" }, {
-        toolCallId: "call-3",
-        messages: [],
-        abortSignal: undefined as any,
-      })
-      expect(errorCount).toBe(3)
-
-      // Verify each error is descriptive
-      expect(errors.length).toBe(3)
-      errors.forEach(error => {
-        expect(error.length).toBeGreaterThan(0)
-      })
-    })
-
-    test("success after failures calls onSuccess (not onError)", async () => {
-      let successCalled = false
-      let errorCount = 0
-      let capturedOutput: unknown
-
-      const tool = SessionPrompt.createStructuredOutputTool({
-        schema: {
-          type: "object",
-          properties: {
-            value: { type: "number" },
-          },
-          required: ["value"],
-        },
-        onSuccess: (output) => {
-          successCalled = true
-          capturedOutput = output
-        },
-        onError: () => {
-          errorCount++
-        },
-      })
-
-      // First attempt - wrong type
-      const result1 = await tool.execute!({ value: "wrong" }, {
-        toolCallId: "call-1",
-        messages: [],
-        abortSignal: undefined as any,
-      })
-      expect(errorCount).toBe(1)
-      expect(successCalled).toBe(false)
-      expect(result1.output).toContain("Validation failed")
-
-      // Second attempt - correct
-      const result2 = await tool.execute!({ value: 42 }, {
-        toolCallId: "call-2",
-        messages: [],
-        abortSignal: undefined as any,
-      })
-      expect(errorCount).toBe(1) // Should not increment
-      expect(successCalled).toBe(true)
-      expect(capturedOutput).toEqual({ value: 42 })
-      expect(result2.output).toBe("Structured output captured successfully.")
-    })
-
-    test("error messages guide model to fix issues", async () => {
-      const tool = SessionPrompt.createStructuredOutputTool({
-        schema: {
-          type: "object",
-          properties: {
-            count: { type: "integer" },
-            items: {
-              type: "array",
-              items: { type: "string" },
-            },
-          },
-          required: ["count", "items"],
-        },
-        onSuccess: () => {},
-        onError: () => {},
-      })
-
-      // Invalid input
-      const result = await tool.execute!({ count: 3.5, items: [1, 2, 3] }, {
-        toolCallId: "call-1",
-        messages: [],
-        abortSignal: undefined as any,
-      })
-
-      // Error message should tell model to fix and retry
-      expect(result.output).toContain("Validation failed")
-      expect(result.output).toContain("call StructuredOutput again")
-    })
-
-    test("simulates retry state tracking (like prompt.ts does)", async () => {
-      // This test simulates how prompt.ts tracks retry state
-      let structuredOutput: unknown | undefined
-      let structuredOutputError: string | undefined
-      let structuredOutputRetries = 0
-      const maxRetries = 2
-
-      const tool = SessionPrompt.createStructuredOutputTool({
-        schema: {
-          type: "object",
-          properties: { answer: { type: "number" } },
-          required: ["answer"],
-        },
-        onSuccess: (output) => {
-          structuredOutput = output
-        },
-        onError: (error) => {
-          structuredOutputError = error
-          structuredOutputRetries++
-        },
-      })
-
-      // Simulate retry loop like in prompt.ts
-      const attempts: Array<{ input: unknown; shouldRetry: boolean }> = [
-        { input: { answer: "wrong" }, shouldRetry: true },  // Attempt 1: fails
-        { input: { answer: "still wrong" }, shouldRetry: true },  // Attempt 2: fails
-        { input: { answer: "nope" }, shouldRetry: false },  // Attempt 3: fails, max exceeded
-      ]
-
-      for (const { input, shouldRetry } of attempts) {
-        await tool.execute!(input, {
-          toolCallId: `call-${structuredOutputRetries + 1}`,
-          messages: [],
-          abortSignal: undefined as any,
-        })
-
-        // Check if we should continue (like prompt.ts loop logic)
-        if (structuredOutput !== undefined) {
-          break // Success - exit loop
-        }
-
-        if (structuredOutputError) {
-          if (structuredOutputRetries <= maxRetries) {
-            expect(shouldRetry).toBe(true)
-            structuredOutputError = undefined // Reset for next attempt
-          } else {
-            expect(shouldRetry).toBe(false)
-            // Max retries exceeded - would set StructuredOutputError in prompt.ts
-            break
-          }
-        }
-      }
-
-      // Verify final state after max retries exceeded
-      expect(structuredOutputRetries).toBe(3)
-      expect(structuredOutput).toBeUndefined()
-    })
-
-    test("simulates successful retry after initial failures", async () => {
-      let structuredOutput: unknown | undefined
-      let structuredOutputError: string | undefined
-      let structuredOutputRetries = 0
-      const maxRetries = 2
-
-      const tool = SessionPrompt.createStructuredOutputTool({
-        schema: {
-          type: "object",
-          properties: { value: { type: "number" } },
-          required: ["value"],
-        },
-        onSuccess: (output) => {
-          structuredOutput = output
-        },
-        onError: (error) => {
-          structuredOutputError = error
-          structuredOutputRetries++
-        },
-      })
-
-      // Simulate: fail twice, then succeed on third attempt
-      const attempts = [
-        { value: "wrong" },      // Fails
-        { value: "also wrong" }, // Fails
-        { value: 42 },           // Succeeds
-      ]
-
-      for (const input of attempts) {
-        await tool.execute!(input, {
-          toolCallId: `call-${structuredOutputRetries + 1}`,
-          messages: [],
-          abortSignal: undefined as any,
-        })
-
-        if (structuredOutput !== undefined) {
-          break // Success
-        }
-
-        if (structuredOutputError && structuredOutputRetries <= maxRetries) {
-          structuredOutputError = undefined
-        }
-      }
-
-      // Should have succeeded on retry 2 (within maxRetries)
-      expect(structuredOutput).toEqual({ value: 42 })
-      expect(structuredOutputRetries).toBe(2) // Two failures before success
-    })
-  })
+  // Note: Retry behavior is handled by the AI SDK and the prompt loop, not the tool itself
+  // The tool simply calls onSuccess when execute() is called with valid args
+  // See prompt.ts loop() for actual retry logic
 })

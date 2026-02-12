@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import path from "path"
 import { Session } from "../../src/session"
 import { SessionPrompt } from "../../src/session/prompt"
@@ -21,184 +21,200 @@ async function withInstance<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 describe("StructuredOutput Integration", () => {
-  test.skipIf(!hasApiKey)("produces structured output with simple schema", async () => {
-    await withInstance(async () => {
-      const session = await Session.create({ title: "Structured Output Test" })
+  test.skipIf(!hasApiKey)(
+    "produces structured output with simple schema",
+    async () => {
+      await withInstance(async () => {
+        const session = await Session.create({ title: "Structured Output Test" })
 
-      const result = await SessionPrompt.prompt({
-        sessionID: session.id,
-        parts: [
-          {
-            type: "text",
-            text: "What is 2 + 2? Provide a simple answer.",
-          },
-        ],
-        outputFormat: {
-          type: "json_schema",
-          schema: {
-            type: "object",
-            properties: {
-              answer: { type: "number", description: "The numerical answer" },
-              explanation: { type: "string", description: "Brief explanation" },
+        const result = await SessionPrompt.prompt({
+          sessionID: session.id,
+          parts: [
+            {
+              type: "text",
+              text: "What is 2 + 2? Provide a simple answer.",
             },
-            required: ["answer"],
+          ],
+          format: {
+            type: "json_schema",
+            schema: {
+              type: "object",
+              properties: {
+                answer: { type: "number", description: "The numerical answer" },
+                explanation: { type: "string", description: "Brief explanation" },
+              },
+              required: ["answer"],
+            },
+            retryCount: 0,
           },
-          retryCount: 0,
-        },
+        })
+
+        // Verify structured output was captured (only on assistant messages)
+        expect(result.info.role).toBe("assistant")
+        if (result.info.role === "assistant") {
+          expect(result.info.structured).toBeDefined()
+          expect(typeof result.info.structured).toBe("object")
+
+          const output = result.info.structured as any
+          expect(output.answer).toBe(4)
+
+          // Verify no error was set
+          expect(result.info.error).toBeUndefined()
+        }
+
+        // Clean up
+        // Note: Not removing session to avoid race with background SessionSummary.summarize
       })
+    },
+    60000,
+  )
 
-      // Verify structured output was captured (only on assistant messages)
-      expect(result.info.role).toBe("assistant")
-      if (result.info.role === "assistant") {
-        expect(result.info.structured_output).toBeDefined()
-        expect(typeof result.info.structured_output).toBe("object")
+  test.skipIf(!hasApiKey)(
+    "produces structured output with nested objects",
+    async () => {
+      await withInstance(async () => {
+        const session = await Session.create({ title: "Nested Schema Test" })
 
-        const output = result.info.structured_output as any
-        expect(output.answer).toBe(4)
-
-        // Verify no error was set
-        expect(result.info.error).toBeUndefined()
-      }
-
-      // Clean up
-      // Note: Not removing session to avoid race with background SessionSummary.summarize
-    })
-  }, 60000)
-
-  test.skipIf(!hasApiKey)("produces structured output with nested objects", async () => {
-    await withInstance(async () => {
-      const session = await Session.create({ title: "Nested Schema Test" })
-
-      const result = await SessionPrompt.prompt({
-        sessionID: session.id,
-        parts: [
-          {
-            type: "text",
-            text: "Tell me about Anthropic company in a structured format.",
-          },
-        ],
-        outputFormat: {
-          type: "json_schema",
-          schema: {
-            type: "object",
-            properties: {
-              company: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  founded: { type: "number" },
+        const result = await SessionPrompt.prompt({
+          sessionID: session.id,
+          parts: [
+            {
+              type: "text",
+              text: "Tell me about Anthropic company in a structured format.",
+            },
+          ],
+          format: {
+            type: "json_schema",
+            schema: {
+              type: "object",
+              properties: {
+                company: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" },
+                    founded: { type: "number" },
+                  },
+                  required: ["name", "founded"],
                 },
-                required: ["name", "founded"],
+                products: {
+                  type: "array",
+                  items: { type: "string" },
+                },
               },
-              products: {
-                type: "array",
-                items: { type: "string" },
-              },
+              required: ["company"],
             },
-            required: ["company"],
+            retryCount: 0,
           },
-          retryCount: 0,
-        },
-      })
+        })
 
-      // Verify structured output was captured (only on assistant messages)
-      expect(result.info.role).toBe("assistant")
-      if (result.info.role === "assistant") {
-        expect(result.info.structured_output).toBeDefined()
-        const output = result.info.structured_output as any
+        // Verify structured output was captured (only on assistant messages)
+        expect(result.info.role).toBe("assistant")
+        if (result.info.role === "assistant") {
+          expect(result.info.structured).toBeDefined()
+          const output = result.info.structured as any
 
-        expect(output.company).toBeDefined()
-        expect(output.company.name).toBe("Anthropic")
-        expect(typeof output.company.founded).toBe("number")
+          expect(output.company).toBeDefined()
+          expect(output.company.name).toBe("Anthropic")
+          expect(typeof output.company.founded).toBe("number")
 
-        if (output.products) {
-          expect(Array.isArray(output.products)).toBe(true)
+          if (output.products) {
+            expect(Array.isArray(output.products)).toBe(true)
+          }
+
+          // Verify no error was set
+          expect(result.info.error).toBeUndefined()
         }
 
-        // Verify no error was set
-        expect(result.info.error).toBeUndefined()
-      }
-
-      // Clean up
-      // Note: Not removing session to avoid race with background SessionSummary.summarize
-    })
-  }, 60000)
-
-  test.skipIf(!hasApiKey)("works with text outputFormat (default)", async () => {
-    await withInstance(async () => {
-      const session = await Session.create({ title: "Text Output Test" })
-
-      const result = await SessionPrompt.prompt({
-        sessionID: session.id,
-        parts: [
-          {
-            type: "text",
-            text: "Say hello.",
-          },
-        ],
-        outputFormat: {
-          type: "text",
-        },
+        // Clean up
+        // Note: Not removing session to avoid race with background SessionSummary.summarize
       })
+    },
+    60000,
+  )
 
-      // Verify no structured output (text mode) and no error
-      expect(result.info.role).toBe("assistant")
-      if (result.info.role === "assistant") {
-        expect(result.info.structured_output).toBeUndefined()
-        expect(result.info.error).toBeUndefined()
-      }
+  test.skipIf(!hasApiKey)(
+    "works with text outputFormat (default)",
+    async () => {
+      await withInstance(async () => {
+        const session = await Session.create({ title: "Text Output Test" })
 
-      // Verify we got a response with parts
-      expect(result.parts.length).toBeGreaterThan(0)
-
-      // Clean up
-      // Note: Not removing session to avoid race with background SessionSummary.summarize
-    })
-  }, 60000)
-
-  test.skipIf(!hasApiKey)("stores outputFormat on user message", async () => {
-    await withInstance(async () => {
-      const session = await Session.create({ title: "OutputFormat Storage Test" })
-
-      await SessionPrompt.prompt({
-        sessionID: session.id,
-        parts: [
-          {
-            type: "text",
-            text: "What is 1 + 1?",
-          },
-        ],
-        outputFormat: {
-          type: "json_schema",
-          schema: {
-            type: "object",
-            properties: {
-              result: { type: "number" },
+        const result = await SessionPrompt.prompt({
+          sessionID: session.id,
+          parts: [
+            {
+              type: "text",
+              text: "Say hello.",
             },
-            required: ["result"],
+          ],
+          format: {
+            type: "text",
           },
-          retryCount: 3,
-        },
-      })
+        })
 
-      // Get all messages from session
-      const messages = await Session.messages({ sessionID: session.id })
-      const userMessage = messages.find((m) => m.info.role === "user")
-
-      // Verify outputFormat was stored on user message
-      expect(userMessage).toBeDefined()
-      if (userMessage?.info.role === "user") {
-        expect(userMessage.info.outputFormat).toBeDefined()
-        expect(userMessage.info.outputFormat?.type).toBe("json_schema")
-        if (userMessage.info.outputFormat?.type === "json_schema") {
-          expect(userMessage.info.outputFormat.retryCount).toBe(3)
+        // Verify no structured output (text mode) and no error
+        expect(result.info.role).toBe("assistant")
+        if (result.info.role === "assistant") {
+          expect(result.info.structured).toBeUndefined()
+          expect(result.info.error).toBeUndefined()
         }
-      }
 
-      // Clean up
-      // Note: Not removing session to avoid race with background SessionSummary.summarize
-    })
-  }, 60000)
+        // Verify we got a response with parts
+        expect(result.parts.length).toBeGreaterThan(0)
+
+        // Clean up
+        // Note: Not removing session to avoid race with background SessionSummary.summarize
+      })
+    },
+    60000,
+  )
+
+  test.skipIf(!hasApiKey)(
+    "stores outputFormat on user message",
+    async () => {
+      await withInstance(async () => {
+        const session = await Session.create({ title: "OutputFormat Storage Test" })
+
+        await SessionPrompt.prompt({
+          sessionID: session.id,
+          parts: [
+            {
+              type: "text",
+              text: "What is 1 + 1?",
+            },
+          ],
+          format: {
+            type: "json_schema",
+            schema: {
+              type: "object",
+              properties: {
+                result: { type: "number" },
+              },
+              required: ["result"],
+            },
+            retryCount: 3,
+          },
+        })
+
+        // Get all messages from session
+        const messages = await Session.messages({ sessionID: session.id })
+        const userMessage = messages.find((m) => m.info.role === "user")
+
+        // Verify outputFormat was stored on user message
+        expect(userMessage).toBeDefined()
+        if (userMessage?.info.role === "user") {
+          expect(userMessage.info.format).toBeDefined()
+          expect(userMessage.info.format?.type).toBe("json_schema")
+          if (userMessage.info.format?.type === "json_schema") {
+            expect(userMessage.info.format.retryCount).toBe(3)
+          }
+        }
+
+        // Clean up
+        // Note: Not removing session to avoid race with background SessionSummary.summarize
+      })
+    },
+    60000,
+  )
 
   test("unit test: StructuredOutputError is properly structured", () => {
     const error = new MessageV2.StructuredOutputError({
