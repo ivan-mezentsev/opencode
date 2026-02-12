@@ -1,11 +1,13 @@
-import { neon } from "@neondatabase/serverless";
-import { getEnv } from "../config";
+import { Database } from "bun:sqlite"
+import { getEnv } from "../config"
 
-let _sql: ReturnType<typeof neon> | null = null;
+let _db: Database | null = null
 
-export function getSql() {
-  if (!_sql) {
-    _sql = neon(getEnv().DATABASE_URL);
+export function getDb(): Database {
+  if (!_db) {
+    _db = new Database(getEnv().DATABASE_PATH, { create: true })
+    _db.exec("PRAGMA journal_mode = WAL;")
+    _db.exec("PRAGMA busy_timeout = 5000;")
   }
-  return _sql;
+  return _db
 }

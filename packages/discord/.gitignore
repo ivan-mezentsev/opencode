@@ -29,5 +29,10 @@ Thumbs.db
 # Logs
 *.log
 
+# Local SQLite
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
 # Sensitive
 .censitive

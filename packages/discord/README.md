@@ -22,21 +22,21 @@ bun run dev
 
 ## Commands
 
-| Command | Description |
-|---------|-------------|
-| `bun run dev` | Watch mode |
-| `bun run start` | Production run |
-| `bun run db:init` | Initialize/migrate database |
-| `bun run typecheck` | TypeScript checks |
-| `bun run build` | Bundle for deployment |
-| `bun run check` | Typecheck + build |
+| Command             | Description                 |
+| ------------------- | --------------------------- |
+| `bun run dev`       | Watch mode                  |
+| `bun run start`     | Production run              |
+| `bun run db:init`   | Initialize/migrate database |
+| `bun run typecheck` | TypeScript checks           |
+| `bun run build`     | Bundle for deployment       |
+| `bun run check`     | Typecheck + build           |
 
 ## Configuration
 
 See [`.env.example`](.env.example) for all available environment variables. Required:
 
 - `DISCORD_TOKEN` — Discord bot token
-- `DATABASE_URL` — Neon Postgres connection string
+- `DATABASE_PATH` — SQLite file path (default: `discord.sqlite`)
 - `DAYTONA_API_KEY` — Daytona API key
 - `OPENCODE_ZEN_API_KEY` — OpenCode API key
 
@@ -56,4 +56,4 @@ Discord thread
             └─ missing? → create sandbox → clone repo → start opencode → new session
 ```
 
-Sessions are persisted in Neon Postgres. Sandbox filesystem (including OpenCode session state) survives pause/resume cycles via Daytona stop/start.
+Sessions are persisted in a local SQLite file. Sandbox filesystem (including OpenCode session state) survives pause/resume cycles via Daytona stop/start.

@@ -1,17 +1,20 @@
-import { z } from "zod";
+import { z } from "zod"
 
 const envSchema = z.object({
   DISCORD_TOKEN: z.string().min(1),
-  ALLOWED_CHANNEL_IDS: z.string().default("").transform((s) =>
-    s
-      .split(",")
-      .map((id) => id.trim())
-      .filter((id) => id.length > 0),
-  ),
+  ALLOWED_CHANNEL_IDS: z
+    .string()
+    .default("")
+    .transform((s) =>
+      s
+        .split(",")
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0),
+    ),
   DISCORD_CATEGORY_ID: z.string().default(""),
   DISCORD_ROLE_ID: z.string().default(""),
   DISCORD_REQUIRED_ROLE_ID: z.string().default(""),
-  DATABASE_URL: z.string().min(1),
+  DATABASE_PATH: z.string().default("discord.sqlite"),
   DAYTONA_API_KEY: z.string().min(1),
   OPENCODE_ZEN_API_KEY: z.string().min(1),
   GITHUB_TOKEN: z.string().default(""),
@@ -30,27 +33,29 @@ const envSchema = z.object({
   RESUME_HEALTH_TIMEOUT_MS: z.coerce.number().default(120000),
   SANDBOX_CREATION_TIMEOUT: z.coerce.number().default(180),
   OPENCODE_MODEL: z.string().default("opencode/claude-sonnet-4-5"),
-});
+})
 
-export type Env = z.infer<typeof envSchema>;
+export type Env = z.infer<typeof envSchema>
 
-let _config: Env | null = null;
+let _config: Env | null = null
 
 export function getEnv(): Env {
   if (!_config) {
-    const result = envSchema.safeParse(process.env);
+    const result = envSchema.safeParse(process.env)
     if (!result.success) {
-      console.error(JSON.stringify({
-        ts: new Date().toISOString(),
-        level: "error",
-        event: "config.invalid",
-        component: "config",
-        message: "Invalid environment variables",
-        fieldErrors: result.error.flatten().fieldErrors,
-      }));
-      throw new Error("Invalid environment configuration");
+      console.error(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          event: "config.invalid",
+          component: "config",
+          message: "Invalid environment variables",
+          fieldErrors: result.error.flatten().fieldErrors,
+        }),
+      )
+      throw new Error("Invalid environment configuration")
     }
-    _config = result.data;
+    _config = result.data
   }
-  return _config;
+  return _config
 }

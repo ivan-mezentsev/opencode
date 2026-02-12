@@ -1,38 +1,40 @@
-import { getSql } from "../db/client";
-import type { SessionInfo, SessionStatus } from "../types";
+import { getDb } from "../db/client"
+import type { SessionInfo, SessionStatus } from "../types"
 
 type SessionRow = {
-  thread_id: string;
-  channel_id: string;
-  guild_id: string;
-  sandbox_id: string;
-  session_id: string;
-  preview_url: string;
-  preview_token: string | null;
-  status: SessionStatus;
-  last_error: string | null;
-  resume_fail_count: number;
-};
-
-export interface SessionStore {
-  upsert(session: SessionInfo): Promise<void>;
-  getByThread(threadId: string): Promise<SessionInfo | null>;
-  hasTrackedThread(threadId: string): Promise<boolean>;
-  getActive(threadId: string): Promise<SessionInfo | null>;
-  markActivity(threadId: string): Promise<void>;
-  markHealthOk(threadId: string): Promise<void>;
-  updateStatus(threadId: string, status: SessionStatus, lastError?: string | null): Promise<void>;
-  incrementResumeFailure(threadId: string, lastError: string): Promise<void>;
-  listActive(): Promise<SessionInfo[]>;
-  listStaleActive(cutoffMinutes: number): Promise<SessionInfo[]>;
-  listExpiredPaused(pausedTtlMinutes: number): Promise<SessionInfo[]>;
+  thread_id: string
+  channel_id: string
+  guild_id: string
+  sandbox_id: string
+  session_id: string
+  preview_url: string
+  preview_token: string | null
+  status: SessionStatus
+  last_error: string | null
+  resume_fail_count: number
 }
 
-class NeonSessionStore implements SessionStore {
-  private readonly sql = getSql();
+export interface SessionStore {
+  upsert(session: SessionInfo): Promise<void>
+  getByThread(threadId: string): Promise<SessionInfo | null>
+  hasTrackedThread(threadId: string): Promise<boolean>
+  getActive(threadId: string): Promise<SessionInfo | null>
+  markActivity(threadId: string): Promise<void>
+  markHealthOk(threadId: string): Promise<void>
+  updateStatus(threadId: string, status: SessionStatus, lastError?: string | null): Promise<void>
+  incrementResumeFailure(threadId: string, lastError: string): Promise<void>
+  listActive(): Promise<SessionInfo[]>
+  listStaleActive(cutoffMinutes: number): Promise<SessionInfo[]>
+  listExpiredPaused(pausedTtlMinutes: number): Promise<SessionInfo[]>
+}
+
+class SqliteSessionStore implements SessionStore {
+  private readonly db = getDb()
 
   async upsert(session: SessionInfo): Promise<void> {
-    await this.sql`
+    this.db
+      .query(
+        `
       INSERT INTO discord_sessions (
         thread_id,
         channel_id,
@@ -48,38 +50,53 @@ class NeonSessionStore implements SessionStore {
         created_at,
         updated_at
       ) VALUES (
-        ${session.threadId},
-        ${session.channelId},
-        ${session.guildId},
-        ${session.sandboxId},
-        ${session.sessionId},
-        ${session.previewUrl},
-        ${session.previewToken},
-        ${session.status},
-        ${session.lastError ?? null},
-        NOW(),
-        CASE WHEN ${session.status} = 'active' THEN NOW() ELSE NULL END,
-        NOW(),
-        NOW()
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        CURRENT_TIMESTAMP,
+        CASE WHEN ? = 'active' THEN CURRENT_TIMESTAMP ELSE NULL END,
+        CURRENT_TIMESTAMP,
+        CURRENT_TIMESTAMP
       )
-      ON CONFLICT (thread_id)
+      ON CONFLICT(thread_id)
       DO UPDATE SET
-        channel_id = EXCLUDED.channel_id,
-        guild_id = EXCLUDED.guild_id,
-        sandbox_id = EXCLUDED.sandbox_id,
-        session_id = EXCLUDED.session_id,
-        preview_url = EXCLUDED.preview_url,
-        preview_token = EXCLUDED.preview_token,
-        status = EXCLUDED.status,
-        last_error = EXCLUDED.last_error,
-        last_activity = NOW(),
-        resumed_at = CASE WHEN EXCLUDED.status = 'active' THEN NOW() ELSE discord_sessions.resumed_at END,
-        updated_at = NOW()
-    `;
+        channel_id = excluded.channel_id,
+        guild_id = excluded.guild_id,
+        sandbox_id = excluded.sandbox_id,
+        session_id = excluded.session_id,
+        preview_url = excluded.preview_url,
+        preview_token = excluded.preview_token,
+        status = excluded.status,
+        last_error = excluded.last_error,
+        last_activity = CURRENT_TIMESTAMP,
+        resumed_at = CASE WHEN excluded.status = 'active' THEN CURRENT_TIMESTAMP ELSE discord_sessions.resumed_at END,
+        updated_at = CURRENT_TIMESTAMP
+    `,
+      )
+      .run(
+        session.threadId,
+        session.channelId,
+        session.guildId,
+        session.sandboxId,
+        session.sessionId,
+        session.previewUrl,
+        session.previewToken,
+        session.status,
+        session.lastError ?? null,
+        session.status,
+      )
   }
 
   async getByThread(threadId: string): Promise<SessionInfo | null> {
-    const rows = await this.sql`
+    const row = this.db
+      .query(
+        `
       SELECT
         thread_id,
         channel_id,
@@ -92,27 +109,35 @@ class NeonSessionStore implements SessionStore {
         last_error,
         resume_fail_count
       FROM discord_sessions
-      WHERE thread_id = ${threadId}
+      WHERE thread_id = ?
       LIMIT 1
-    ` as SessionRow[];
+    `,
+      )
+      .get(threadId) as SessionRow | null
 
-    if (rows.length === 0) return null;
-    return toSessionInfo(rows[0]);
+    if (!row) return null
+    return toSessionInfo(row)
   }
 
   async hasTrackedThread(threadId: string): Promise<boolean> {
-    const rows = await this.sql`
+    const row = this.db
+      .query(
+        `
       SELECT thread_id
       FROM discord_sessions
-      WHERE thread_id = ${threadId}
+      WHERE thread_id = ?
       LIMIT 1
-    ` as Array<{ thread_id: string }>;
+    `,
+      )
+      .get(threadId) as { thread_id: string } | null
 
-    return rows.length > 0;
+    return Boolean(row)
   }
 
   async getActive(threadId: string): Promise<SessionInfo | null> {
-    const rows = await this.sql`
+    const row = this.db
+      .query(
+        `
       SELECT
         thread_id,
         channel_id,
@@ -125,60 +150,80 @@ class NeonSessionStore implements SessionStore {
         last_error,
         resume_fail_count
       FROM discord_sessions
-      WHERE thread_id = ${threadId}
+      WHERE thread_id = ?
         AND status = 'active'
       LIMIT 1
-    ` as SessionRow[];
+    `,
+      )
+      .get(threadId) as SessionRow | null
 
-    if (rows.length === 0) return null;
-    return toSessionInfo(rows[0]);
+    if (!row) return null
+    return toSessionInfo(row)
   }
 
   async markActivity(threadId: string): Promise<void> {
-    await this.sql`
+    this.db
+      .query(
+        `
       UPDATE discord_sessions
-      SET last_activity = NOW(), updated_at = NOW()
-      WHERE thread_id = ${threadId}
-    `;
+      SET last_activity = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE thread_id = ?
+    `,
+      )
+      .run(threadId)
   }
 
   async markHealthOk(threadId: string): Promise<void> {
-    await this.sql`
+    this.db
+      .query(
+        `
       UPDATE discord_sessions
-      SET last_health_ok_at = NOW(), updated_at = NOW()
-      WHERE thread_id = ${threadId}
-    `;
+      SET last_health_ok_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE thread_id = ?
+    `,
+      )
+      .run(threadId)
   }
 
   async updateStatus(threadId: string, status: SessionStatus, lastError?: string | null): Promise<void> {
-    await this.sql`
+    this.db
+      .query(
+        `
       UPDATE discord_sessions
       SET
-        status = ${status},
-        last_error = ${lastError ?? null},
-        pause_requested_at = CASE WHEN ${status} = 'pausing' THEN NOW() ELSE pause_requested_at END,
-        paused_at = CASE WHEN ${status} = 'paused' THEN NOW() ELSE paused_at END,
-        resume_attempted_at = CASE WHEN ${status} = 'resuming' THEN NOW() ELSE resume_attempted_at END,
-        resumed_at = CASE WHEN ${status} = 'active' THEN NOW() ELSE resumed_at END,
-        destroyed_at = CASE WHEN ${status} = 'destroyed' THEN NOW() ELSE destroyed_at END,
-        updated_at = NOW()
-      WHERE thread_id = ${threadId}
-    `;
+        status = ?,
+        last_error = ?,
+        pause_requested_at = CASE WHEN ? = 'pausing' THEN CURRENT_TIMESTAMP ELSE pause_requested_at END,
+        paused_at = CASE WHEN ? = 'paused' THEN CURRENT_TIMESTAMP ELSE paused_at END,
+        resume_attempted_at = CASE WHEN ? = 'resuming' THEN CURRENT_TIMESTAMP ELSE resume_attempted_at END,
+        resumed_at = CASE WHEN ? = 'active' THEN CURRENT_TIMESTAMP ELSE resumed_at END,
+        destroyed_at = CASE WHEN ? = 'destroyed' THEN CURRENT_TIMESTAMP ELSE destroyed_at END,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE thread_id = ?
+    `,
+      )
+      .run(status, lastError ?? null, status, status, status, status, status, threadId)
   }
 
   async incrementResumeFailure(threadId: string, lastError: string): Promise<void> {
-    await this.sql`
+    this.db
+      .query(
+        `
       UPDATE discord_sessions
       SET
         resume_fail_count = resume_fail_count + 1,
-        last_error = ${lastError},
-        updated_at = NOW()
-      WHERE thread_id = ${threadId}
-    `;
+        last_error = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE thread_id = ?
+    `,
+      )
+      .run(lastError, threadId)
   }
 
   async listActive(): Promise<SessionInfo[]> {
-    const rows = await this.sql`
+    const rows = this.db
+      .query(
+        `
       SELECT
         thread_id,
         channel_id,
@@ -193,13 +238,17 @@ class NeonSessionStore implements SessionStore {
       FROM discord_sessions
       WHERE status = 'active'
       ORDER BY last_activity DESC
-    ` as SessionRow[];
+    `,
+      )
+      .all() as SessionRow[]
 
-    return rows.map(toSessionInfo);
+    return rows.map(toSessionInfo)
   }
 
   async listStaleActive(cutoffMinutes: number): Promise<SessionInfo[]> {
-    const rows = await this.sql`
+    const rows = this.db
+      .query(
+        `
       SELECT
         thread_id,
         channel_id,
@@ -213,15 +262,19 @@ class NeonSessionStore implements SessionStore {
         resume_fail_count
       FROM discord_sessions
       WHERE status = 'active'
-        AND last_activity < NOW() - (${cutoffMinutes} || ' minutes')::interval
+        AND last_activity < datetime('now', '-' || ? || ' minutes')
       ORDER BY last_activity ASC
-    ` as SessionRow[];
+    `,
+      )
+      .all(cutoffMinutes) as SessionRow[]
 
-    return rows.map(toSessionInfo);
+    return rows.map(toSessionInfo)
   }
 
   async listExpiredPaused(pausedTtlMinutes: number): Promise<SessionInfo[]> {
-    const rows = await this.sql`
+    const rows = this.db
+      .query(
+        `
       SELECT
         thread_id,
         channel_id,
@@ -236,11 +289,13 @@ class NeonSessionStore implements SessionStore {
       FROM discord_sessions
       WHERE status = 'paused'
         AND paused_at IS NOT NULL
-        AND paused_at < NOW() - (${pausedTtlMinutes} || ' minutes')::interval
+        AND paused_at < datetime('now', '-' || ? || ' minutes')
       ORDER BY paused_at ASC
-    ` as SessionRow[];
+    `,
+      )
+      .all(pausedTtlMinutes) as SessionRow[]
 
-    return rows.map(toSessionInfo);
+    return rows.map(toSessionInfo)
   }
 }
 
@@ -256,11 +311,11 @@ function toSessionInfo(row: SessionRow): SessionInfo {
     status: row.status,
     lastError: row.last_error,
     resumeFailCount: row.resume_fail_count,
-  };
+  }
 }
 
-const sessionStore: SessionStore = new NeonSessionStore();
+const sessionStore: SessionStore = new SqliteSessionStore()
 
 export function getSessionStore(): SessionStore {
-  return sessionStore;
+  return sessionStore
 }
