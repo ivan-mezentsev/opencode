@@ -58,8 +58,8 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           INPUT_ARTIFACTS: |
             [
-              ["${{ steps.upload_unsigned_windows_cli.outputs.artifact-id }}", "packages/opencode/dist/opencode-windows-x64/bin/opencode.exe"],
-              ["${{ steps.upload_unsigned_windows_baseline_cli.outputs.artifact-id }}", "packages/opencode/dist/opencode-windows-x64-baseline/bin/opencode.exe"]
+              ["${{ steps.upload_unsigned_windows_cli.outputs.artifact-id }}", "./packages/opencode/dist/opencode-windows-x64/bin/opencode.exe"],
+              ["${{ steps.upload_unsigned_windows_baseline_cli.outputs.artifact-id }}", "./packages/opencode/dist/opencode-windows-x64-baseline/bin/opencode.exe"]
             ]
 
       - name: Upload signed Windows CLI
