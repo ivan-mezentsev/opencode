@@ -56,9 +56,7 @@ jobs:
           WAIT_FOR_COMPLETION-for-completion: true
           OUTPUT_ARTIFACT_DIRECTORY: signed-opencode-cli
           GITHUB_TOKEN: ${{ github.token }}
-          INPUT_ARTIFACTS: |
-            ${{ steps.upload_unsigned_windows_cli.outputs.artifact-id }}
-            ${{ steps.upload_unsigned_windows_baseline_cli.outputs.artifact-id }}
+          INPUT_ARTIFACTS: ${{ steps.upload_unsigned_windows_cli.outputs.artifact-id }} ${{ steps.upload_unsigned_windows_baseline_cli.outputs.artifact-id }}
 
       - name: Upload signed Windows CLI
         uses: actions/upload-artifact@v4
