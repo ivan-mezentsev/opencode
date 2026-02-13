@@ -57,6 +57,13 @@ const LogLevelInformation = "Information"
 const LogLevelWarning = "Warning"
 const LogLevelError = "Error"
 
+// ── Per-call options ─────────────────────────────────────────────────
+
+export interface SignOptions {
+  artifactId: string
+  outputDirectory: string
+}
+
 // ── Input (from env vars) ────────────────────────────────────────────
 
 const connectorUrl = optionalEnv("CONNECTOR_URL", "https://githubactions.connectors.signpath.io")
@@ -65,14 +72,12 @@ const organizationId = requiredEnv("ORGANIZATION_ID")
 const projectSlug = requiredEnv("PROJECT_SLUG")
 const signingPolicySlug = requiredEnv("SIGNING_POLICY_SLUG")
 const artifactConfigurationSlug = optionalEnv("ARTIFACT_CONFIGURATION_SLUG")
-const githubArtifactId = requiredEnv("GITHUB_ARTIFACT_ID")
 const gitHubToken = optionalEnv("GITHUB_TOKEN")
 const parametersRaw = optionalEnv("PARAMETERS")
 const waitForCompletionTimeoutInSeconds = optionalEnvNumber("WAIT_FOR_COMPLETION_TIMEOUT_IN_SECONDS", 600)
 const serviceUnavailableTimeoutInSeconds = optionalEnvNumber("SERVICE_UNAVAILABLE_TIMEOUT_IN_SECONDS", 600)
 const downloadSignedArtifactTimeoutInSeconds = optionalEnvNumber("DOWNLOAD_SIGNED_ARTIFACT_TIMEOUT_IN_SECONDS", 300)
 const waitForCompletion = optionalEnv("WAIT_FOR_COMPLETION", "true") === "true"
-const outputArtifactDirectory = optionalEnv("OUTPUT_ARTIFACT_DIRECTORY")
 
 // ── Parse user-defined parameters ────────────────────────────────────
 
@@ -303,10 +308,13 @@ function redirectConnectorLogsToActionLogs(logs?: Array<{ level: string; message
 
 // ── Validation result check ──────────────────────────────────────────
 
-function checkCiSystemValidationResult(validationResult?: SubmitSigningRequestResponse["validationResult"]): void {
+function checkCiSystemValidationResult(
+  artifactId: string,
+  validationResult?: SubmitSigningRequestResponse["validationResult"],
+): void {
   if (validationResult && validationResult.errors.length > 0) {
     console.error(
-      `Build artifact with id "${githubArtifactId}" cannot be signed because of continuous integration system setup validation errors:`,
+      `Build artifact with id "${artifactId}" cannot be signed because of continuous integration system setup validation errors:`,
     )
     for (const ve of validationResult.errors) {
       console.error(ve.error)
@@ -318,12 +326,12 @@ function checkCiSystemValidationResult(validationResult?: SubmitSigningRequestRe
 
 // ── Submit signing request ───────────────────────────────────────────
 
-async function submitSigningRequest(): Promise<string> {
+async function submitSigningRequest(artifactId: string): Promise<string> {
   const submitUrl = buildSubmitSigningRequestUrl()
   console.log("Submitting the signing request to SignPath GitHub Actions connector...")
 
   const payload = {
-    artifactId: githubArtifactId,
+    artifactId,
     gitHubWorkflowRunId: process.env.GITHUB_RUN_ID,
     gitHubRepository: process.env.GITHUB_REPOSITORY,
     gitHubToken: gitHubToken,
@@ -344,7 +352,7 @@ async function submitSigningRequest(): Promise<string> {
   if (!resp.ok) {
     if (body.error) {
       redirectConnectorLogsToActionLogs(body.logs)
-      checkCiSystemValidationResult(body.validationResult)
+      checkCiSystemValidationResult(artifactId, body.validationResult)
       throw new Error(body.error)
     }
 
@@ -363,7 +371,7 @@ async function submitSigningRequest(): Promise<string> {
   }
 
   redirectConnectorLogsToActionLogs(body.logs)
-  checkCiSystemValidationResult(body.validationResult)
+  checkCiSystemValidationResult(artifactId, body.validationResult)
 
   console.log("SignPath signing request has been successfully submitted")
   console.log(`The signing request id is ${body.signingRequestId}`)
@@ -467,7 +475,7 @@ async function ensureSigningRequestCompleted(signingRequestId: string): Promise<
 
 // ── Download signed artifact ─────────────────────────────────────────
 
-async function downloadSignedArtifact(artifactDownloadUrl: string): Promise<void> {
+async function downloadSignedArtifact(artifactDownloadUrl: string, outputDirectory: string): Promise<void> {
   console.log(`Signed artifact url ${artifactDownloadUrl}`)
 
   const timeoutMs = downloadSignedArtifactTimeoutInSeconds * 1000
@@ -497,7 +505,7 @@ async function downloadSignedArtifact(artifactDownloadUrl: string): Promise<void
     throw new Error(httpErrorResponseToText(resp.status, resp.statusText, bodyText))
   }
 
-  const targetDirectory = resolveOrCreateDirectory(outputArtifactDirectory)
+  const targetDirectory = resolveOrCreateDirectory(outputDirectory)
   console.log(`The signed artifact is being downloaded from SignPath and will be saved to ${targetDirectory}`)
 
   const arrayBuffer = await resp.arrayBuffer()
@@ -527,22 +535,27 @@ function resolveOrCreateDirectory(directoryPath: string): string {
 
 // ── Main ─────────────────────────────────────────────────────────────
 
-async function run(): Promise<void> {
-  try {
-    const signingRequestId = await submitSigningRequest()
+export async function sign(options: SignOptions) {
+  const signingRequestId = await submitSigningRequest(options.artifactId)
 
-    if (waitForCompletion) {
-      await ensureSigningRequestCompleted(signingRequestId)
-      if (outputArtifactDirectory) {
-        await downloadSignedArtifact(buildGetSignedArtifactUrl(signingRequestId))
-      }
-    } else {
-      await ensureSignPathDownloadedUnsignedArtifact(signingRequestId)
+  if (waitForCompletion) {
+    await ensureSigningRequestCompleted(signingRequestId)
+    if (options.outputDirectory) {
+      await downloadSignedArtifact(buildGetSignedArtifactUrl(signingRequestId), options.outputDirectory)
     }
-  } catch (err: any) {
-    console.error(err.message)
-    process.exit(1)
+  } else {
+    await ensureSignPathDownloadedUnsignedArtifact(signingRequestId)
   }
 }
 
-run()
+// ── CLI entry point ──────────────────────────────────────────────────
+
+if (import.meta.main) {
+  sign({
+    artifactId: requiredEnv("GITHUB_ARTIFACT_ID"),
+    outputDirectory: optionalEnv("OUTPUT_ARTIFACT_DIRECTORY"),
+  }).catch((err) => {
+    console.error(err.message)
+    process.exit(1)
+  })
+}
