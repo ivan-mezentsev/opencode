@@ -67,6 +67,7 @@
   "devDependencies": {
     "@actions/artifact": "5.0.1",
     "@tsconfig/bun": "catalog:",
+    "@types/adm-zip": "0.5.7",
     "husky": "9.1.7",
     "prettier": "3.6.2",
     "semver": "^7.6.0",

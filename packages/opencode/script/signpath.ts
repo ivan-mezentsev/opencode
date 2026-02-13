@@ -1,12 +1,10 @@
 #!/usr/bin/env bun
 
-// import { sign } from "../../../script/signpath.ts"
+import { sign } from "../../../script/signpath.ts"
 
-console.log(process.env.INPUT_ARTIFACTS)
-
-// await sign({
-//   outputDirectory: optionalEnv("OUTPUT_ARTIFACT_DIRECTORY"),
-// })
-// await sign({
-//   outputDirectory: optionalEnv("OUTPUT_ARTIFACT_DIRECTORY"),
-// })
+for (const artifactId of process.env.INPUT_ARTIFACTS!.split("\n")) {
+  await sign({
+    outputDirectory: process.env.OUTPUT_ARTIFACT_DIRECTORY!,
+    artifactId: artifactId.trim(),
+  })
+}
