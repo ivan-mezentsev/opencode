@@ -34,18 +34,32 @@ jobs:
           path: packages/opencode/dist/opencode-windows-x64/bin/opencode.exe
           if-no-files-found: error
 
+      # - name: Submit SignPath signing request
+      #   id: submit_signpath_signing_request
+      #   uses: signpath/github-action-submit-signing-request@v1
+      #   with:
+      #     api-token: ${{ secrets.SIGNPATH_API_KEY }}
+      #     organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+      #     project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+      #     signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+      #     artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+      #     github-artifact-id: ${{ steps.upload_unsigned_windows_cli.outputs.artifact-id }}
+      #     wait-for-completion: true
+      #     output-artifact-directory: signed-opencode-cli
+
       - name: Submit SignPath signing request
         id: submit_signpath_signing_request
-        uses: signpath/github-action-submit-signing-request@v1
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_KEY }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
-          github-artifact-id: ${{ steps.upload_unsigned_windows_cli.outputs.artifact-id }}
-          wait-for-completion: true
-          output-artifact-directory: signed-opencode-cli
+        run: |
+          ./script/signpath.ts
+        env:
+          API_TOKEN: ${{ secrets.SIGNPATH_API_KEY }}
+          ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          GITHUB_ARTIFACT_ID: ${{ steps.upload_unsigned_windows_cli.outputs.artifact-id }}
+          WAIT_FOR_COMPLETION-for-completion: true
+          OUTPUT_ARTIFACT_DIRECTORY: signed-opencode-cli
 
       - name: Upload signed Windows CLI
         uses: actions/upload-artifact@v4
