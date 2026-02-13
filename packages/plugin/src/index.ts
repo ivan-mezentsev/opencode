@@ -12,11 +12,13 @@ import type {
   Config as SDKConfig,
 } from "@opencode-ai/sdk"
 import type { createOpencodeClient as createOpencodeClientV2, Event as TuiEvent } from "@opencode-ai/sdk/v2"
+import type { CliRenderer } from "@opentui/core"
 
 import type { BunShell } from "./shell"
 import { type ToolDefinition } from "./tool"
 
 export * from "./tool"
+export type { CliRenderer } from "@opentui/core"
 
 export type ProviderContext = {
   source: "env" | "config" | "custom" | "api"
@@ -66,7 +68,7 @@ export type TuiEventBus = {
   ) => () => void
 }
 
-export type TuiPluginInput<Renderer = unknown> = {
+export type TuiPluginInput<Renderer = CliRenderer> = {
   client: ReturnType<typeof createOpencodeClientV2>
   event: TuiEventBus
   url: string
@@ -74,9 +76,12 @@ export type TuiPluginInput<Renderer = unknown> = {
   renderer: Renderer
 }
 
-export type TuiPlugin<Renderer = unknown> = (input: TuiPluginInput<Renderer>, options?: PluginOptions) => Promise<void>
+export type TuiPlugin<Renderer = CliRenderer> = (
+  input: TuiPluginInput<Renderer>,
+  options?: PluginOptions,
+) => Promise<void>
 
-export type PluginModule<Renderer = unknown> =
+export type PluginModule<Renderer = CliRenderer> =
   | Plugin
   | { server?: Plugin; tui?: TuiPlugin<Renderer>; themes?: Record<string, ThemeJson> }
 
