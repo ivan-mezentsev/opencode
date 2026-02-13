@@ -162,6 +162,14 @@ If you provided options in config, they will be available as the second argument
 
 Plugins can also export a `{ server, tui }` object. The server loader executes `server` (same as a normal plugin function). The TUI loader executes `tui` **only** when a TUI is running.
 
+To load a TUI plugin, add it to `tui.json`:
+
+```json title="tui.json"
+{
+  "plugin": ["my-tui-plugin"]
+}
+```
+
 ```ts title=".opencode/plugins/example.ts"
 export const MyPlugin = {
   server: async (ctx, options) => {
@@ -182,6 +190,25 @@ TUI input includes:
 - `renderer`: the active OpenTUI renderer instance
 - `url`: server URL
 - `directory`: optional working directory
+
+Example: hook into the renderer and react to terminal resize events.
+
+```ts title=".opencode/plugins/resize-listener.ts"
+import type { TuiPlugin } from "@opencode-ai/plugin"
+
+export const MyPlugin: { tui: TuiPlugin } = {
+  tui: async (ctx) => {
+    const onResize = (width: number, height: number) => {
+      console.log("terminal resized", { width, height })
+    }
+
+    ctx.renderer.on("resize", onResize)
+
+    // later, if needed:
+    // ctx.renderer.off("resize", onResize)
+  },
+}
+```
 
 ---
 
