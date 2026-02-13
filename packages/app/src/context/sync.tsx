@@ -106,6 +106,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }
     const absolute = (path: string) => (current()[0].path.directory + "/" + path).replace("//", "/")
     const messagePageSize = 400
+    const trimPageSize = 80
+    const fullSessionLimit = 5
+    const full = new Map<string, true>()
     const inflight = new Map<string, Promise<void>>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
@@ -114,6 +117,112 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       complete: {} as Record<string, boolean>,
       loading: {} as Record<string, boolean>,
     })
+
+    const touch = (key: string) => {
+      if (full.has(key)) full.delete(key)
+      full.set(key, true)
+      while (full.size > fullSessionLimit) {
+        const oldest = full.keys().next().value as string | undefined
+        if (!oldest) return
+        full.delete(oldest)
+      }
+    }
+
+    const evict = (input: { directory: string; store: Child[0]; setStore: Setter; keep?: string }) => {
+      const keep = new Set<string>()
+      if (input.keep) keep.add(input.keep)
+      for (const session of input.store.session) {
+        if (session?.id) keep.add(session.id)
+      }
+
+      const warm = new Set<string>()
+      for (const sessionID of keep) {
+        if (full.has(keyFor(input.directory, sessionID))) warm.add(sessionID)
+      }
+      if (input.keep) warm.add(input.keep)
+
+      const drop = new Set<string>()
+      const trim = new Set<string>()
+      for (const sessionID of Object.keys(input.store.message)) {
+        if (!keep.has(sessionID)) {
+          drop.add(sessionID)
+          continue
+        }
+        if (!warm.has(sessionID)) trim.add(sessionID)
+      }
+      for (const sessionID of Object.keys(input.store.session_diff)) {
+        if (!keep.has(sessionID) || !warm.has(sessionID)) drop.add(sessionID)
+      }
+      for (const sessionID of Object.keys(input.store.todo)) {
+        if (!keep.has(sessionID) || !warm.has(sessionID)) drop.add(sessionID)
+      }
+      for (const sessionID of Object.keys(input.store.permission)) {
+        if (!keep.has(sessionID)) drop.add(sessionID)
+      }
+      for (const sessionID of Object.keys(input.store.question)) {
+        if (!keep.has(sessionID)) drop.add(sessionID)
+      }
+      for (const sessionID of Object.keys(input.store.session_status)) {
+        if (!keep.has(sessionID)) drop.add(sessionID)
+      }
+      if (drop.size === 0 && trim.size === 0) return
+
+      input.setStore(
+        produce((draft) => {
+          for (const sessionID of drop) {
+            const messages = draft.message[sessionID]
+            if (messages) {
+              for (const message of messages) {
+                const id = message?.id
+                if (!id) continue
+                delete draft.part[id]
+              }
+            }
+
+            delete draft.message[sessionID]
+            delete draft.session_diff[sessionID]
+            delete draft.todo[sessionID]
+            delete draft.permission[sessionID]
+            delete draft.question[sessionID]
+            delete draft.session_status[sessionID]
+            full.delete(keyFor(input.directory, sessionID))
+          }
+
+          for (const sessionID of trim) {
+            const messages = draft.message[sessionID]
+            if (!messages) continue
+            const count = messages.length - trimPageSize
+            if (count <= 0) continue
+            for (const message of messages.slice(0, count)) {
+              const id = message?.id
+              if (!id) continue
+              delete draft.part[id]
+            }
+            draft.message[sessionID] = messages.slice(count)
+          }
+        }),
+      )
+
+      setMeta(
+        produce((draft) => {
+          for (const sessionID of drop) {
+            const key = keyFor(input.directory, sessionID)
+            delete draft.limit[key]
+            delete draft.complete[key]
+            delete draft.loading[key]
+          }
+          for (const sessionID of trim) {
+            const key = keyFor(input.directory, sessionID)
+            if (draft.limit[key] !== undefined && draft.limit[key] > trimPageSize) {
+              draft.limit[key] = trimPageSize
+            }
+            if (draft.complete[key] !== undefined) {
+              draft.complete[key] = false
+            }
+          }
+        }),
+      )
+    }
 
     const getSession = (sessionID: string) => {
       const store = current()[0]
@@ -236,10 +345,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
           const hasMessages = store.message[sessionID] !== undefined
           const hydrated = meta.limit[key] !== undefined
-          if (hasSession && hasMessages && hydrated) return
+          if (hasSession && hasMessages && hydrated && full.has(key)) {
+            touch(key)
+            evict({ directory, store, setStore, keep: sessionID })
+            return
+          }
 
           const count = store.message[sessionID]?.length ?? 0
-          const limit = hydrated ? (meta.limit[key] ?? messagePageSize) : limitFor(count)
+          const limit = hydrated ? Math.max(meta.limit[key] ?? messagePageSize, messagePageSize) : limitFor(count)
 
           const sessionReq = hasSession
             ? Promise.resolve()
@@ -260,7 +373,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               })
 
           const messagesReq =
-            hasMessages && hydrated
+            hasMessages && hydrated && full.has(key)
               ? Promise.resolve()
               : loadMessages({
                   directory,
@@ -270,7 +383,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                   limit,
                 })
 
-          return runInflight(inflight, key, () => Promise.all([sessionReq, messagesReq]).then(() => {}))
+          return runInflight(inflight, key, () =>
+            Promise.all([sessionReq, messagesReq]).then(() => {
+              touch(key)
+              evict({ directory, store, setStore, keep: sessionID })
+            }),
+          )
         },
         async diff(sessionID: string) {
           const directory = sdk.directory
