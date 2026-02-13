@@ -540,10 +540,12 @@ You can configure MCP servers you want to use through the `mcp` option.
 
 Place plugin files in `.opencode/plugins/` or `~/.config/opencode/plugins/`. You can also load plugins from npm through the `plugin` option.
 
+Each entry can be a string specifier or a `[specifier, options]` tuple. Options are passed to the plugin initializer.
+
 ```json title="opencode.json"
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-helicone-session", "@my-org/custom-plugin"]
+  "plugin": ["opencode-helicone-session", ["@my-org/custom-plugin", { "arbitrary": "options" }]]
 }
 ```
 

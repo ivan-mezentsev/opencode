@@ -78,6 +78,7 @@ import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { formatTranscript } from "../../util/transcript"
 import { UI } from "@/cli/ui.ts"
+import { useTuiConfig } from "../../context/tui-config"
 
 addDefaultParsers(parsers.parsers)
 
@@ -100,6 +101,7 @@ const context = createContext<{
   showDetails: () => boolean
   diffWrapMode: () => "word" | "none"
   sync: ReturnType<typeof useSync>
+  tui: ReturnType<typeof useTuiConfig>
 }>()
 
 function use() {
@@ -112,6 +114,7 @@ export function Session() {
   const route = useRouteData("session")
   const { navigate } = useRoute()
   const sync = useSync()
+  const tuiConfig = useTuiConfig()
   const kv = useKV()
   const { theme } = useTheme()
   const promptRef = usePromptRef()
@@ -164,7 +167,7 @@ export function Session() {
   const contentWidth = createMemo(() => dimensions().width - (sidebarVisible() ? 42 : 0) - 4)
 
   const scrollAcceleration = createMemo(() => {
-    const tui = sync.data.config.tui
+    const tui = tuiConfig.tui
     if (tui?.scroll_acceleration?.enabled) {
       return new MacOSScrollAccel()
     }
@@ -968,6 +971,7 @@ export function Session() {
         showDetails,
         diffWrapMode,
         sync,
+        tui: tuiConfig,
       }}
     >
       <box flexDirection="row">
@@ -1912,7 +1916,7 @@ function Edit(props: ToolProps<typeof EditTool>) {
   const { theme, syntax } = useTheme()
 
   const view = createMemo(() => {
-    const diffStyle = ctx.sync.data.config.tui?.diff_style
+    const diffStyle = ctx.tui.tui?.diff_style
     if (diffStyle === "stacked") return "unified"
     // Default to "auto" behavior
     return ctx.width > 120 ? "split" : "unified"
@@ -1983,7 +1987,7 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
   const files = createMemo(() => props.metadata.files ?? [])
 
   const view = createMemo(() => {
-    const diffStyle = ctx.sync.data.config.tui?.diff_style
+    const diffStyle = ctx.tui.tui?.diff_style
     if (diffStyle === "stacked") return "unified"
     return ctx.width > 120 ? "split" : "unified"
   })

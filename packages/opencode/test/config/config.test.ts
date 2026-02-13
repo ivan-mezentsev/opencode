@@ -24,6 +24,9 @@ async function writeConfig(dir: string, config: object, name = "opencode.json") 
   await Bun.write(path.join(dir, name), JSON.stringify(config))
 }
 
+const spec = (plugin: Config.PluginSpec) => Config.pluginSpecifier(plugin)
+const name = (plugin: Config.PluginSpec) => Config.getPluginName(plugin)
+
 test("loads config with defaults when no files exist", async () => {
   await using tmp = await tmpdir()
   await Instance.provide({
@@ -51,6 +54,28 @@ test("loads JSON config file", async () => {
       const config = await Config.get()
       expect(config.model).toBe("test/model")
       expect(config.username).toBe("testuser")
+    },
+  })
+})
+
+test("ignores legacy tui keys in opencode config", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await writeConfig(dir, {
+        $schema: "https://opencode.ai/config.json",
+        model: "test/model",
+        theme: "legacy",
+        tui: { scroll_speed: 4 },
+      })
+    },
+  })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      expect(config.model).toBe("test/model")
+      expect((config as Record<string, unknown>).theme).toBeUndefined()
+      expect((config as Record<string, unknown>).tui).toBeUndefined()
     },
   })
 })
@@ -109,14 +134,14 @@ test("merges multiple config files with correct precedence", async () => {
 
 test("handles environment variable substitution", async () => {
   const originalEnv = process.env["TEST_VAR"]
-  process.env["TEST_VAR"] = "test_theme"
+  process.env["TEST_VAR"] = "test-user"
 
   try {
     await using tmp = await tmpdir({
       init: async (dir) => {
         await writeConfig(dir, {
           $schema: "https://opencode.ai/config.json",
-          theme: "{env:TEST_VAR}",
+          username: "{env:TEST_VAR}",
         })
       },
     })
@@ -124,7 +149,7 @@ test("handles environment variable substitution", async () => {
       directory: tmp.path,
       fn: async () => {
         const config = await Config.get()
-        expect(config.theme).toBe("test_theme")
+        expect(config.username).toBe("test-user")
       },
     })
   } finally {
@@ -147,7 +172,7 @@ test("preserves env variables when adding $schema to config", async () => {
         await Bun.write(
           path.join(dir, "opencode.json"),
           JSON.stringify({
-            theme: "{env:PRESERVE_VAR}",
+            username: "{env:PRESERVE_VAR}",
           }),
         )
       },
@@ -156,7 +181,7 @@ test("preserves env variables when adding $schema to config", async () => {
       directory: tmp.path,
       fn: async () => {
         const config = await Config.get()
-        expect(config.theme).toBe("secret_value")
+        expect(config.username).toBe("secret_value")
 
         // Read the file to verify the env variable was preserved
         const content = await Bun.file(path.join(tmp.path, "opencode.json")).text()
@@ -177,10 +202,10 @@ test("preserves env variables when adding $schema to config", async () => {
 test("handles file inclusion substitution", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
-      await Bun.write(path.join(dir, "included.txt"), "test_theme")
+      await Bun.write(path.join(dir, "included.txt"), "test-user")
       await writeConfig(dir, {
         $schema: "https://opencode.ai/config.json",
-        theme: "{file:included.txt}",
+        username: "{file:included.txt}",
       })
     },
   })
@@ -188,7 +213,7 @@ test("handles file inclusion substitution", async () => {
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.theme).toBe("test_theme")
+      expect(config.username).toBe("test-user")
     },
   })
 })
@@ -199,7 +224,7 @@ test("handles file inclusion with replacement tokens", async () => {
       await Bun.write(path.join(dir, "included.md"), "const out = await Bun.$`echo hi`")
       await writeConfig(dir, {
         $schema: "https://opencode.ai/config.json",
-        theme: "{file:included.md}",
+        username: "{file:included.md}",
       })
     },
   })
@@ -207,7 +232,7 @@ test("handles file inclusion with replacement tokens", async () => {
     directory: tmp.path,
     fn: async () => {
       const config = await Config.get()
-      expect(config.theme).toBe("const out = await Bun.$`echo hi`")
+      expect(config.username).toBe("const out = await Bun.$`echo hi`")
     },
   })
 })
@@ -690,11 +715,75 @@ test("resolves scoped npm plugins in config", async () => {
       const baseUrl = pathToFileURL(path.join(tmp.path, "opencode.json")).href
       const expected = import.meta.resolve("@scope/plugin", baseUrl)
 
-      expect(pluginEntries.includes(expected)).toBe(true)
+      const specs = pluginEntries.map(spec)
 
-      const scopedEntry = pluginEntries.find((entry) => entry === expected)
+      expect(specs.includes(expected)).toBe(true)
+
+      const scopedEntry = specs.find((entry) => entry === expected)
       expect(scopedEntry).toBeDefined()
       expect(scopedEntry?.includes("/node_modules/@scope/plugin/")).toBe(true)
+    },
+  })
+})
+
+test("preserves plugin options while resolving specifiers", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      const pluginDir = path.join(dir, "node_modules", "@scope", "plugin")
+      await fs.mkdir(pluginDir, { recursive: true })
+
+      await Bun.write(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name: "config-fixture", version: "1.0.0", type: "module" }, null, 2),
+      )
+
+      await Bun.write(
+        path.join(pluginDir, "package.json"),
+        JSON.stringify(
+          {
+            name: "@scope/plugin",
+            version: "1.0.0",
+            type: "module",
+            main: "./index.js",
+          },
+          null,
+          2,
+        ),
+      )
+
+      await Bun.write(path.join(pluginDir, "index.js"), "export default {}\n")
+
+      await Bun.write(
+        path.join(dir, "opencode.json"),
+        JSON.stringify(
+          {
+            $schema: "https://opencode.ai/config.json",
+            plugin: [["@scope/plugin", { mode: "tui", nested: { foo: "bar" } }]],
+          },
+          null,
+          2,
+        ),
+      )
+    },
+  })
+
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      const config = await Config.get()
+      const pluginEntries = config.plugin ?? []
+      const entry = pluginEntries.find(
+        (item) => Array.isArray(item) && spec(item).includes("/node_modules/@scope/plugin/"),
+      )
+
+      expect(entry).toBeDefined()
+      if (!entry || !Array.isArray(entry)) return
+
+      const baseUrl = pathToFileURL(path.join(tmp.path, "opencode.json")).href
+      const expected = import.meta.resolve("@scope/plugin", baseUrl)
+
+      expect(entry[0]).toBe(expected)
+      expect(entry[1]).toEqual({ mode: "tui", nested: { foo: "bar" } })
     },
   })
 })
@@ -734,12 +823,12 @@ test("merges plugin arrays from global and local configs", async () => {
       const plugins = config.plugin ?? []
 
       // Should contain both global and local plugins
-      expect(plugins.some((p) => p.includes("global-plugin-1"))).toBe(true)
-      expect(plugins.some((p) => p.includes("global-plugin-2"))).toBe(true)
-      expect(plugins.some((p) => p.includes("local-plugin-1"))).toBe(true)
+      expect(plugins.some((p) => name(p) === "global-plugin-1")).toBe(true)
+      expect(plugins.some((p) => name(p) === "global-plugin-2")).toBe(true)
+      expect(plugins.some((p) => name(p) === "local-plugin-1")).toBe(true)
 
       // Should have all 3 plugins (not replaced, but merged)
-      const pluginNames = plugins.filter((p) => p.includes("global-plugin") || p.includes("local-plugin"))
+      const pluginNames = plugins.filter((p) => name(p).includes("global-plugin") || name(p).includes("local-plugin"))
       expect(pluginNames.length).toBeGreaterThanOrEqual(3)
     },
   })
@@ -893,17 +982,17 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
       const plugins = config.plugin ?? []
 
       // Should contain all unique plugins
-      expect(plugins.some((p) => p.includes("global-plugin-1"))).toBe(true)
-      expect(plugins.some((p) => p.includes("local-plugin-1"))).toBe(true)
-      expect(plugins.some((p) => p.includes("duplicate-plugin"))).toBe(true)
+      expect(plugins.some((p) => name(p) === "global-plugin-1")).toBe(true)
+      expect(plugins.some((p) => name(p) === "local-plugin-1")).toBe(true)
+      expect(plugins.some((p) => name(p) === "duplicate-plugin")).toBe(true)
 
       // Should deduplicate the duplicate plugin
-      const duplicatePlugins = plugins.filter((p) => p.includes("duplicate-plugin"))
+      const duplicatePlugins = plugins.filter((p) => name(p) === "duplicate-plugin")
       expect(duplicatePlugins.length).toBe(1)
 
       // Should have exactly 3 unique plugins
-      const pluginNames = plugins.filter(
-        (p) => p.includes("global-plugin") || p.includes("local-plugin") || p.includes("duplicate-plugin"),
+      const pluginNames = plugins.filter((p) =>
+        ["global-plugin-1", "local-plugin-1", "duplicate-plugin"].includes(name(p)),
       )
       expect(pluginNames.length).toBe(3)
     },
@@ -1042,7 +1131,6 @@ test("managed settings override project settings", async () => {
         $schema: "https://opencode.ai/config.json",
         autoupdate: true,
         disabled_providers: [],
-        theme: "dark",
       })
     },
   })
@@ -1059,7 +1147,6 @@ test("managed settings override project settings", async () => {
       const config = await Config.get()
       expect(config.autoupdate).toBe(false)
       expect(config.disabled_providers).toEqual(["openai"])
-      expect(config.theme).toBe("dark")
     },
   })
 })
@@ -1596,7 +1683,7 @@ describe("deduplicatePlugins", () => {
 
         const myPlugins = plugins.filter((p) => Config.getPluginName(p) === "my-plugin")
         expect(myPlugins.length).toBe(1)
-        expect(myPlugins[0].startsWith("file://")).toBe(true)
+        expect(spec(myPlugins[0]).startsWith("file://")).toBe(true)
       },
     })
   })

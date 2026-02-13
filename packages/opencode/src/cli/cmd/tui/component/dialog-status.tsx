@@ -4,19 +4,23 @@ import { useTheme } from "../context/theme"
 import { useDialog } from "@tui/ui/dialog"
 import { useSync } from "@tui/context/sync"
 import { For, Match, Switch, Show, createMemo } from "solid-js"
+import { useTuiConfig } from "../context/tui-config"
+import { Config } from "@/config/config"
 
 export type DialogStatusProps = {}
 
 export function DialogStatus() {
   const sync = useSync()
+  const config = useTuiConfig()
   const { theme } = useTheme()
   const dialog = useDialog()
 
   const enabledFormatters = createMemo(() => sync.data.formatter.filter((f) => f.enabled))
 
   const plugins = createMemo(() => {
-    const list = sync.data.config.plugin ?? []
-    const result = list.map((value) => {
+    const list = config.plugin ?? []
+    const result = list.map((item) => {
+      const value = Config.pluginSpecifier(item)
       if (value.startsWith("file://")) {
         const path = fileURLToPath(value)
         const parts = path.split("/")

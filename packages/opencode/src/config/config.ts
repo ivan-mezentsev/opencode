@@ -31,15 +31,21 @@ import { Event } from "../server/event"
 import { PackageRegistry } from "@/bun/registry"
 import { proxied } from "@/util/proxied"
 import { iife } from "@/util/iife"
+import { ConfigPaths } from "./paths"
 
 export namespace Config {
   const ModelId = z.string().meta({ $ref: "https://models.dev/model-schema.json#/$defs/Model" })
+  const PluginOptions = z.record(z.string(), z.unknown())
+  const PluginSpec = z.union([z.string(), z.tuple([z.string(), PluginOptions])])
+
+  export type PluginOptions = z.infer<typeof PluginOptions>
+  export type PluginSpec = z.infer<typeof PluginSpec>
 
   const log = Log.create({ service: "config" })
 
   // Managed settings directory for enterprise deployments (highest priority, admin-controlled)
   // These settings override all user and project settings
-  function getManagedConfigDir(): string {
+  function systemManagedConfigDir(): string {
     switch (process.platform) {
       case "darwin":
         return "/Library/Application Support/opencode"
@@ -50,13 +56,17 @@ export namespace Config {
     }
   }
 
-  const managedConfigDir = process.env.OPENCODE_TEST_MANAGED_CONFIG_DIR || getManagedConfigDir()
+  export function managedConfigDir() {
+    return process.env.OPENCODE_TEST_MANAGED_CONFIG_DIR || systemManagedConfigDir()
+  }
+
+  const managedDir = managedConfigDir()
 
   // Custom merge function that concatenates array fields instead of replacing them
   function mergeConfigConcatArrays(target: Info, source: Info): Info {
     const merged = mergeDeep(target, source)
     if (target.plugin && source.plugin) {
-      merged.plugin = Array.from(new Set([...target.plugin, ...source.plugin]))
+      merged.plugin = [...target.plugin, ...source.plugin]
     }
     if (target.instructions && source.instructions) {
       merged.instructions = Array.from(new Set([...target.instructions, ...source.instructions]))
@@ -107,11 +117,8 @@ export namespace Config {
 
     // Project config overrides global and remote config.
     if (!Flag.OPENCODE_DISABLE_PROJECT_CONFIG) {
-      for (const file of ["opencode.jsonc", "opencode.json"]) {
-        const found = await Filesystem.findUp(file, Instance.directory, Instance.worktree)
-        for (const resolved of found.toReversed()) {
-          result = mergeConfigConcatArrays(result, await loadFile(resolved))
-        }
+      for (const file of await ConfigPaths.projectFiles("opencode", Instance.directory, Instance.worktree)) {
+        result = mergeConfigConcatArrays(result, await loadFile(file))
       }
     }
 
@@ -119,31 +126,10 @@ export namespace Config {
     result.mode = result.mode || {}
     result.plugin = result.plugin || []
 
-    const directories = [
-      Global.Path.config,
-      // Only scan project .opencode/ directories when project discovery is enabled
-      ...(!Flag.OPENCODE_DISABLE_PROJECT_CONFIG
-        ? await Array.fromAsync(
-            Filesystem.up({
-              targets: [".opencode"],
-              start: Instance.directory,
-              stop: Instance.worktree,
-            }),
-          )
-        : []),
-      // Always scan ~/.opencode/ (user home directory)
-      ...(await Array.fromAsync(
-        Filesystem.up({
-          targets: [".opencode"],
-          start: Global.Path.home,
-          stop: Global.Path.home,
-        }),
-      )),
-    ]
+    const directories = await ConfigPaths.directories(Instance.directory, Instance.worktree)
 
     // .opencode directory config overrides (project and global) config sources.
     if (Flag.OPENCODE_CONFIG_DIR) {
-      directories.push(Flag.OPENCODE_CONFIG_DIR)
       log.debug("loading config from OPENCODE_CONFIG_DIR", { path: Flag.OPENCODE_CONFIG_DIR })
     }
 
@@ -184,9 +170,9 @@ export namespace Config {
     // Kept separate from directories array to avoid write operations when installing plugins
     // which would fail on system directories requiring elevated permissions
     // This way it only loads config file and not skills/plugins/commands
-    if (existsSync(managedConfigDir)) {
+    if (existsSync(managedDir)) {
       for (const file of ["opencode.jsonc", "opencode.json"]) {
-        result = mergeConfigConcatArrays(result, await loadFile(path.join(managedConfigDir, file)))
+        result = mergeConfigConcatArrays(result, await loadFile(path.join(managedDir, file)))
       }
     }
 
@@ -224,8 +210,6 @@ export namespace Config {
     if (result.autoshare === true && !result.share) {
       result.share = "auto"
     }
-
-    if (!result.keybinds) result.keybinds = Info.shape.keybinds.parse({})
 
     // Apply flag overrides for compaction settings
     if (Flag.OPENCODE_DISABLE_AUTOCOMPACT) {
@@ -288,7 +272,7 @@ export namespace Config {
     }
   }
 
-  async function needsInstall(dir: string) {
+  export async function needsInstall(dir: string) {
     // Some config dirs may be read-only.
     // Installing deps there will fail; skip installation in that case.
     const writable = await isWritable(dir)
@@ -478,15 +462,35 @@ export namespace Config {
    * getPluginName("oh-my-opencode@2.4.3") // "oh-my-opencode"
    * getPluginName("@scope/pkg@1.0.0") // "@scope/pkg"
    */
-  export function getPluginName(plugin: string): string {
-    if (plugin.startsWith("file://")) {
-      return path.parse(new URL(plugin).pathname).name
+  export function pluginSpecifier(plugin: PluginSpec): string {
+    return Array.isArray(plugin) ? plugin[0] : plugin
+  }
+
+  export function pluginOptions(plugin: PluginSpec): PluginOptions | undefined {
+    return Array.isArray(plugin) ? plugin[1] : undefined
+  }
+
+  export function getPluginName(plugin: PluginSpec): string {
+    const spec = pluginSpecifier(plugin)
+    if (spec.startsWith("file://")) {
+      return path.parse(new URL(spec).pathname).name
     }
-    const lastAt = plugin.lastIndexOf("@")
+    const lastAt = spec.lastIndexOf("@")
     if (lastAt > 0) {
-      return plugin.substring(0, lastAt)
+      return spec.substring(0, lastAt)
     }
-    return plugin
+    return spec
+  }
+
+  export function resolvePluginSpec(plugin: PluginSpec, configFilepath: string): PluginSpec {
+    const spec = pluginSpecifier(plugin)
+    try {
+      const resolved = import.meta.resolve!(spec, configFilepath)
+      if (Array.isArray(plugin)) return [resolved, plugin[1]]
+      return resolved
+    } catch {
+      return plugin
+    }
   }
 
   /**
@@ -500,14 +504,14 @@ export namespace Config {
    * Since plugins are added in low-to-high priority order,
    * we reverse, deduplicate (keeping first occurrence), then restore order.
    */
-  export function deduplicatePlugins(plugins: string[]): string[] {
+  export function deduplicatePlugins(plugins: PluginSpec[]): PluginSpec[] {
     // seenNames: canonical plugin names for duplicate detection
     // e.g., "oh-my-opencode", "@scope/pkg"
     const seenNames = new Set<string>()
 
     // uniqueSpecifiers: full plugin specifiers to return
-    // e.g., "oh-my-opencode@2.4.3", "file:///path/to/plugin.js"
-    const uniqueSpecifiers: string[] = []
+    // e.g., "oh-my-opencode@2.4.3", ["file:///path/to/plugin.js", { ... }]
+    const uniqueSpecifiers: PluginSpec[] = []
 
     for (const specifier of plugins.toReversed()) {
       const name = getPluginName(specifier)
@@ -1004,10 +1008,7 @@ export namespace Config {
   export const Info = z
     .object({
       $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
-      theme: z.string().optional().describe("Theme name to use for the interface"),
-      keybinds: Keybinds.optional().describe("Custom keybind configurations"),
       logLevel: Log.Level.optional().describe("Log level"),
-      tui: TUI.optional().describe("TUI specific settings"),
       server: Server.optional().describe("Server configuration for opencode serve and web commands"),
       command: z
         .record(z.string(), Command)
@@ -1019,7 +1020,7 @@ export namespace Config {
           ignore: z.array(z.string()).optional(),
         })
         .optional(),
-      plugin: z.string().array().optional(),
+      plugin: PluginSpec.array().optional(),
       snapshot: z.boolean().optional(),
       share: z
         .enum(["manual", "auto", "disabled"])
@@ -1239,48 +1240,56 @@ export namespace Config {
     return load(text, filepath)
   }
 
-  async function load(text: string, configFilepath: string) {
-    const original = text
+  export async function substitute(text: string, configFilepath: string, missing: "error" | "empty" = "error") {
     text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
       return process.env[varName] || ""
     })
 
     const fileMatches = text.match(/\{file:[^}]+\}/g)
-    if (fileMatches) {
-      const configDir = path.dirname(configFilepath)
-      const lines = text.split("\n")
+    if (!fileMatches) return text
 
-      for (const match of fileMatches) {
-        const lineIndex = lines.findIndex((line) => line.includes(match))
-        if (lineIndex !== -1 && lines[lineIndex].trim().startsWith("//")) {
-          continue // Skip if line is commented
-        }
-        let filePath = match.replace(/^\{file:/, "").replace(/\}$/, "")
-        if (filePath.startsWith("~/")) {
-          filePath = path.join(os.homedir(), filePath.slice(2))
-        }
-        const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(configDir, filePath)
-        const fileContent = (
-          await Bun.file(resolvedPath)
-            .text()
-            .catch((error) => {
-              const errMsg = `bad file reference: "${match}"`
-              if (error.code === "ENOENT") {
-                throw new InvalidError(
-                  {
-                    path: configFilepath,
-                    message: errMsg + ` ${resolvedPath} does not exist`,
-                  },
-                  { cause: error },
-                )
-              }
-              throw new InvalidError({ path: configFilepath, message: errMsg }, { cause: error })
-            })
-        ).trim()
-        // escape newlines/quotes, strip outer quotes
-        text = text.replace(match, () => JSON.stringify(fileContent).slice(1, -1))
+    const configDir = path.dirname(configFilepath)
+    const lines = text.split("\n")
+
+    for (const match of fileMatches) {
+      const lineIndex = lines.findIndex((line) => line.includes(match))
+      if (lineIndex !== -1 && lines[lineIndex].trim().startsWith("//")) continue
+
+      let filePath = match.replace(/^\{file:/, "").replace(/\}$/, "")
+      if (filePath.startsWith("~/")) {
+        filePath = path.join(os.homedir(), filePath.slice(2))
       }
+
+      const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(configDir, filePath)
+      const fileContent = (
+        await Bun.file(resolvedPath)
+          .text()
+          .catch((error) => {
+            if (missing === "empty") return ""
+
+            const errMsg = `bad file reference: "${match}"`
+            if (error.code === "ENOENT") {
+              throw new InvalidError(
+                {
+                  path: configFilepath,
+                  message: errMsg + ` ${resolvedPath} does not exist`,
+                },
+                { cause: error },
+              )
+            }
+            throw new InvalidError({ path: configFilepath, message: errMsg }, { cause: error })
+          })
+      ).trim()
+
+      text = text.replace(match, () => JSON.stringify(fileContent).slice(1, -1))
     }
+
+    return text
+  }
+
+  async function load(text: string, configFilepath: string) {
+    const original = text
+    text = await substitute(text, configFilepath)
 
     const errors: JsoncParseError[] = []
     const data = parseJsonc(text, errors, { allowTrailingComma: true })
@@ -1306,7 +1315,19 @@ export namespace Config {
       })
     }
 
-    const parsed = Info.safeParse(data)
+    const normalized = (() => {
+      if (!data || typeof data !== "object" || Array.isArray(data)) return data
+      const copy = { ...(data as Record<string, unknown>) }
+      const hadLegacy = "theme" in copy || "keybinds" in copy || "tui" in copy
+      if (!hadLegacy) return copy
+      delete copy.theme
+      delete copy.keybinds
+      delete copy.tui
+      log.warn("tui keys in opencode config are deprecated; move them to tui.json", { path: configFilepath })
+      return copy
+    })()
+
+    const parsed = Info.safeParse(normalized)
     if (parsed.success) {
       if (!parsed.data.$schema) {
         parsed.data.$schema = "https://opencode.ai/config.json"
@@ -1317,10 +1338,7 @@ export namespace Config {
       const data = parsed.data
       if (data.plugin) {
         for (let i = 0; i < data.plugin.length; i++) {
-          const plugin = data.plugin[i]
-          try {
-            data.plugin[i] = import.meta.resolve!(plugin, configFilepath)
-          } catch (err) {}
+          data.plugin[i] = resolvePluginSpec(data.plugin[i], configFilepath)
         }
       }
       return data

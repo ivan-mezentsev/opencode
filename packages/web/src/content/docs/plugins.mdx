@@ -9,6 +9,23 @@ For examples, check out the [plugins](/docs/ecosystem#plugins) created by the co
 
 ---
 
+## System overview
+
+OpenCode plugins support two entry points:
+
+- `server` (loaded by the OpenCode server from `opencode.json`)
+- `tui` (loaded by the terminal UI from `tui.json`)
+
+A plugin can implement either entry point, or both in the same module.
+
+In short:
+
+- **v1 compatibility**: a default exported function is treated as a server plugin.
+- **v2 format**: export an object with `server` and/or `tui` keys.
+- **TUI plugin scope**: only plugins listed in `tui.json` are loaded for the TUI.
+
+---
+
 ## Use a plugin
 
 There are two ways to load plugins.
@@ -33,7 +50,11 @@ Specify npm packages in your config file.
 ```json title="opencode.json"
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-helicone-session", "opencode-wakatime", "@my-org/custom-plugin"]
+  "plugin": [
+    "opencode-helicone-session",
+    ["opencode-wakatime", { "project": "vault-33" }],
+    ["@my-org/custom-plugin", { "arbitrary": "options" }]
+  ]
 }
 ```
 
@@ -53,14 +74,25 @@ Browse available plugins in the [ecosystem](/docs/ecosystem#plugins).
 
 ### Load order
 
-Plugins are loaded from all sources and all hooks run in sequence. The load order is:
+Plugins are loaded from all sources and all hooks run in sequence. When the same plugin appears multiple times, **higher-priority sources win**:
 
-1. Global config (`~/.config/opencode/opencode.json`)
+1. Project plugin directory (`.opencode/plugins/`)
 2. Project config (`opencode.json`)
 3. Global plugin directory (`~/.config/opencode/plugins/`)
-4. Project plugin directory (`.opencode/plugins/`)
+4. Global config (`~/.config/opencode/opencode.json`)
 
-Duplicate npm packages with the same name and version are loaded once. However, a local plugin and an npm plugin with similar names are both loaded separately.
+Plugins are deduplicated by canonical name (package name or local file name). A higher‑priority local file named `my-plugin.js` will override a lower‑priority npm package named `my-plugin`.
+
+---
+
+### Plugin options from config
+
+Each entry in the `plugin` array can be either:
+
+- A string specifier (package name or file URL), or
+- A tuple of `[specifier, options]`
+
+Options are passed as the **second argument** to your plugin initializer (both `server` and `tui`).
 
 ---
 
@@ -104,7 +136,7 @@ export const MyPlugin = async (ctx) => {
 ### Basic structure
 
 ```js title=".opencode/plugins/example.js"
-export const MyPlugin = async ({ project, client, $, directory, worktree }) => {
+export const MyPlugin = async ({ project, client, $, directory, worktree, serverUrl }, options) => {
   console.log("Plugin initialized!")
 
   return {
@@ -120,6 +152,66 @@ The plugin function receives:
 - `worktree`: The git worktree path.
 - `client`: An opencode SDK client for interacting with the AI.
 - `$`: Bun's [shell API](https://bun.com/docs/runtime/shell) for executing commands.
+- `serverUrl`: The server URL for the current OpenCode instance.
+
+If you provided options in config, they will be available as the second argument.
+
+---
+
+### TUI plugins
+
+Plugins can also export a `{ server, tui }` object. The server loader executes `server` (same as a normal plugin function). The TUI loader executes `tui` **only** when a TUI is running.
+
+```ts title=".opencode/plugins/example.ts"
+export const MyPlugin = {
+  server: async (ctx, options) => {
+    return {
+      // Server hooks
+    }
+  },
+  tui: async (ctx, options) => {
+    // TUI-only setup (subscribe to events, call client APIs, etc.)
+  },
+}
+```
+
+TUI input includes:
+
+- `client`: the SDK client for the connected server
+- `event`: an event bus for server events
+- `url`: server URL
+- `directory`: optional working directory
+
+---
+
+### Themes from plugins
+
+Plugins can register one or more TUI themes. Define them as `themes` on the exported object. The TUI will register them as soon as the plugin module is loaded.
+
+```ts title=".opencode/plugins/theme-pack.ts"
+export const MyPlugin = {
+  themes: {
+    "vault-tec": {
+      theme: {
+        primary: "#5ea9ff",
+        secondary: "#7cff7c",
+        accent: "#ffd06a",
+        // ...all required theme colors
+      },
+    },
+    "vault-tec-light": {
+      theme: {
+        primary: "#1b4b8a",
+        secondary: "#2f8a2f",
+        accent: "#a86a00",
+      },
+    },
+  },
+  tui: async () => {},
+}
+```
+
+Plugin themes are added to the theme list. If a theme name already exists (built‑in or custom), the existing theme takes precedence.
 
 ---
 
@@ -141,7 +233,7 @@ export const MyPlugin: Plugin = async ({ project, client, $, directory, worktree
 
 ### Events
 
-Plugins can subscribe to events as seen below in the Examples section. Here is a list of the different events available.
+Plugins can subscribe to events by implementing the `event` hook. The hook receives `{ event }`, where `event.type` is the event name and `event.data` contains the payload. Here is a list of the different events available.
 
 #### Command Events
 
@@ -206,6 +298,44 @@ Plugins can subscribe to events as seen below in the Examples section. Here is a
 - `tui.prompt.append`
 - `tui.command.execute`
 - `tui.toast.show`
+- `tui.session.select`
+
+These fire only when a TUI is connected or a client drives the TUI via `/tui/*` APIs.
+
+---
+
+## Hook reference
+
+Beyond the `event` hook, plugins can implement the following **stable** hooks:
+
+| Hook                     | Purpose                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------- |
+| `config`                 | Receives the merged config after startup.                                          |
+| `tool`                   | Register custom tools with `@opencode-ai/plugin`.                                  |
+| `auth`                   | Provide custom authentication flows for providers.                                 |
+| `chat.message`           | Runs when a new user message is received (modify `output.message`/`output.parts`). |
+| `chat.params`            | Modify LLM parameters such as temperature, topP, topK, or provider options.        |
+| `chat.headers`           | Inject custom request headers for provider calls.                                  |
+| `permission.ask`         | Decide whether a permission request should be allowed, denied, or asked.           |
+| `command.execute.before` | Modify or inject parts before a slash command executes.                            |
+| `tool.execute.before`    | Modify tool arguments before execution.                                            |
+| `tool.execute.after`     | Modify tool output metadata/title/text after execution.                            |
+| `shell.env`              | Inject environment variables into all shell executions.                            |
+
+---
+
+## Experimental hooks
+
+:::caution
+Experimental hooks are unstable and can change without notice.
+:::
+
+| Hook                                   | Purpose                                                        |
+| -------------------------------------- | -------------------------------------------------------------- |
+| `experimental.chat.messages.transform` | Transform the full list of message parts sent to the model.    |
+| `experimental.chat.system.transform`   | Modify system prompts before sending them to the model.        |
+| `experimental.session.compacting`      | Customize compaction context or replace the compaction prompt. |
+| `experimental.text.complete`           | Post-process generated text parts before they are committed.   |
 
 ---
 

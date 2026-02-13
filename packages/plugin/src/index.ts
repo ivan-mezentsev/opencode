@@ -9,8 +9,9 @@ import type {
   Message,
   Part,
   Auth,
-  Config,
+  Config as SDKConfig,
 } from "@opencode-ai/sdk"
+import type { createOpencodeClient as createOpencodeClientV2, Event as TuiEvent } from "@opencode-ai/sdk/v2"
 
 import type { BunShell } from "./shell"
 import { type ToolDefinition } from "./tool"
@@ -32,7 +33,49 @@ export type PluginInput = {
   $: BunShell
 }
 
-export type Plugin = (input: PluginInput) => Promise<Hooks>
+export type PluginOptions = Record<string, unknown>
+
+export type Config = Omit<SDKConfig, "plugin"> & {
+  plugin?: Array<string | [string, PluginOptions]>
+}
+
+type HexColor = `#${string}`
+type RefName = string
+type Variant = {
+  dark: HexColor | RefName | number
+  light: HexColor | RefName | number
+}
+type ThemeColorValue = HexColor | RefName | number | Variant
+
+export type ThemeJson = {
+  $schema?: string
+  defs?: Record<string, HexColor | RefName>
+  theme: Record<string, ThemeColorValue> & {
+    selectedListItemText?: ThemeColorValue
+    backgroundMenu?: ThemeColorValue
+    thinkingOpacity?: number
+  }
+}
+
+export type Plugin = (input: PluginInput, options?: PluginOptions) => Promise<Hooks>
+
+export type TuiEventBus = {
+  on: <Type extends TuiEvent["type"]>(
+    type: Type,
+    handler: (event: Extract<TuiEvent, { type: Type }>) => void,
+  ) => () => void
+}
+
+export type TuiPluginInput = {
+  client: ReturnType<typeof createOpencodeClientV2>
+  event: TuiEventBus
+  url: string
+  directory?: string
+}
+
+export type TuiPlugin = (input: TuiPluginInput, options?: PluginOptions) => Promise<void>
+
+export type PluginModule = Plugin | { server?: Plugin; tui?: TuiPlugin; themes?: Record<string, ThemeJson> }
 
 export type AuthHook = {
   provider: string

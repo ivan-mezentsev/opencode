@@ -1,7 +1,6 @@
 import { SyntaxStyle, RGBA, type TerminalColors } from "@opentui/core"
 import path from "path"
-import { createEffect, createMemo, onMount } from "solid-js"
-import { useSync } from "@tui/context/sync"
+import { createEffect, createMemo, onCleanup, onMount } from "solid-js"
 import { createSimpleContext } from "./helper"
 import aura from "./theme/aura.json" with { type: "json" }
 import ayu from "./theme/ayu.json" with { type: "json" }
@@ -41,6 +40,7 @@ import { useRenderer } from "@opentui/solid"
 import { createStore, produce } from "solid-js/store"
 import { Global } from "@/global"
 import { Filesystem } from "@/util/filesystem"
+import { useTuiConfig } from "./tui-config"
 
 type ThemeColors = {
   primary: RGBA
@@ -135,6 +135,44 @@ type ThemeJson = {
     backgroundMenu?: ColorValue
     thinkingOpacity?: number
   }
+}
+
+type ThemeRegistry = {
+  themes: Record<string, ThemeJson>
+  listeners: Set<(themes: Record<string, ThemeJson>) => void>
+}
+
+const registry: ThemeRegistry = {
+  themes: {},
+  listeners: new Set(),
+}
+
+export function registerThemes(themes: Record<string, unknown>) {
+  const entries = Object.entries(themes).filter((entry): entry is [string, ThemeJson] => {
+    const theme = entry[1]
+    if (!theme || typeof theme !== "object") return false
+    if (!("theme" in theme)) return false
+    return true
+  })
+  if (entries.length === 0) return
+
+  for (const [name, theme] of entries) {
+    registry.themes[name] = theme
+  }
+
+  const payload = Object.fromEntries(entries)
+  for (const handler of registry.listeners) {
+    handler(payload)
+  }
+}
+
+function registeredThemes() {
+  return registry.themes
+}
+
+function onThemes(handler: (themes: Record<string, ThemeJson>) => void) {
+  registry.listeners.add(handler)
+  return () => registry.listeners.delete(handler)
 }
 
 export const DEFAULT_THEMES: Record<string, ThemeJson> = {
@@ -279,22 +317,23 @@ function ansiToRgba(code: number): RGBA {
 export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   name: "Theme",
   init: (props: { mode: "dark" | "light" }) => {
-    const sync = useSync()
+    const config = useTuiConfig()
     const kv = useKV()
     const [store, setStore] = createStore({
       themes: DEFAULT_THEMES,
       mode: kv.get("theme_mode", props.mode),
-      active: (sync.data.config.theme ?? kv.get("theme", "opencode")) as string,
+      active: (config.theme ?? kv.get("theme", "opencode")) as string,
       ready: false,
     })
 
     createEffect(() => {
-      const theme = sync.data.config.theme
+      const theme = config.theme
       if (theme) setStore("active", theme)
     })
 
     function init() {
       resolveSystemTheme()
+      mergeThemes(registeredThemes())
       getCustomThemes()
         .then((custom) => {
           setStore(
@@ -314,6 +353,22 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     }
 
     onMount(init)
+    onCleanup(
+      onThemes((themes) => {
+        mergeThemes(themes)
+      }),
+    )
+
+    function mergeThemes(themes: Record<string, ThemeJson>) {
+      setStore(
+        produce((draft) => {
+          for (const [name, theme] of Object.entries(themes)) {
+            if (draft.themes[name]) continue
+            draft.themes[name] = theme
+          }
+        }),
+      )
+    }
 
     function resolveSystemTheme() {
       console.log("resolveSystemTheme")
