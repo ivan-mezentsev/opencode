@@ -2,7 +2,7 @@
 
 import { sign } from "../../../script/signpath.ts"
 
-for (const artifactId of process.env.INPUT_ARTIFACTS!.split("\n")) {
+for (const artifactId of process.env.INPUT_ARTIFACTS!.split("\n").filter((s) => !!s)) {
   await sign({
     outputDirectory: process.env.OUTPUT_ARTIFACT_DIRECTORY!,
     artifactId: artifactId.trim(),
