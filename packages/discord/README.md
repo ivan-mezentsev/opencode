@@ -46,26 +46,35 @@ bun run dev
 
 ### 4. Run with Docker
 
-Build the image from the package directory (or from repo root using the same path as context):
+From the repo root, use the built-in Make targets:
+
+```bash
+cp packages/discord/.env.example packages/discord/.env
+# Fill in required values in packages/discord/.env
+
+make -C packages/discord docker-build
+make -C packages/discord docker-run
+make -C packages/discord docker-status
+```
+
+SQLite data is persisted locally in `packages/discord/data`.
+
+Useful commands:
+
+```bash
+make -C packages/discord docker-logs
+make -C packages/discord docker-stop
+```
+
+If you prefer plain Docker commands instead of Make, run:
 
 ```bash
 docker build -t opencode-discord packages/discord
-```
-
-Create an env file from the template and set the required values (`DISCORD_TOKEN`, `DAYTONA_API_KEY`, `OPENCODE_ZEN_API_KEY`):
-
-```bash
-cp packages/discord/.env.example .env
-```
-
-Run the container with a persistent volume for SQLite data:
-
-```bash
-docker run --name opencode-discord \
-  --env-file .env \
+docker run --name opencode-discord-local \
+  --env-file packages/discord/.env \
   -e DATABASE_PATH=/data/discord.sqlite \
   -p 8787:8787 \
-  -v opencode-discord-data:/data \
+  -v $(pwd)/packages/discord/data:/data \
   opencode-discord
 ```
 
