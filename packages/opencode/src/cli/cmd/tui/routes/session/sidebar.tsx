@@ -12,11 +12,14 @@ import { useDirectory } from "../../context/directory"
 import { useKV } from "../../context/kv"
 import { TodoItem } from "../../component/todo-item"
 
-export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
+export function Sidebar(props: { sessionID: string; overlay?: boolean; hideDiff?: boolean }) {
   const sync = useSync()
   const { theme } = useTheme()
   const session = createMemo(() => sync.session.get(props.sessionID)!)
-  const diff = createMemo(() => sync.data.session_diff[props.sessionID] ?? [])
+  const diff = createMemo(() => {
+    if (props.hideDiff) return []
+    return sync.data.session_diff[props.sessionID] ?? []
+  })
   const todo = createMemo(() => sync.data.todo[props.sessionID] ?? [])
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
 

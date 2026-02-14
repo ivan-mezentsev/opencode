@@ -152,6 +152,18 @@ export function Session() {
   const [showHeader, setShowHeader] = kv.signal("header_visible", true)
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
   const [animationsEnabled, setAnimationsEnabled] = kv.signal("animations_enabled", true)
+  const [clearedDiff, setClearedDiff] = createSignal<Record<string, string>>({})
+  const diff = createMemo(() => sync.data.session_diff[route.sessionID] ?? [])
+  const diffStamp = createMemo(() =>
+    diff()
+      .map((item) => `${item.file}:${item.additions}:${item.deletions}`)
+      .join("\n"),
+  )
+  const diffHidden = createMemo(() => {
+    const mark = clearedDiff()[route.sessionID]
+    if (!mark) return false
+    return mark === diffStamp()
+  })
 
   const wide = createMemo(() => dimensions().width > 120)
   const sidebarVisible = createMemo(() => {
@@ -162,6 +174,18 @@ export function Session() {
   })
   const showTimestamps = createMemo(() => timestamps() === "show")
   const contentWidth = createMemo(() => dimensions().width - (sidebarVisible() ? 42 : 0) - 4)
+
+  createEffect(() => {
+    const mark = clearedDiff()[route.sessionID]
+    if (!mark) return
+    if (mark === diffStamp()) return
+    setClearedDiff((prev) => {
+      if (!prev[route.sessionID]) return prev
+      const next = { ...prev }
+      delete next[route.sessionID]
+      return next
+    })
+  })
 
   const scrollAcceleration = createMemo(() => {
     const tui = sync.data.config.tui
@@ -523,6 +547,19 @@ export function Session() {
           setSidebar(() => (isVisible ? "hide" : "auto"))
           setSidebarOpen(!isVisible)
         })
+        dialog.clear()
+      },
+    },
+    {
+      title: "Clear Modified",
+      value: "session.modified.clear",
+      category: "Session",
+      enabled: !session()?.parentID && !diffHidden() && diff().length > 0,
+      onSelect: (dialog) => {
+        setClearedDiff((prev) => ({
+          ...prev,
+          [route.sessionID]: diffStamp(),
+        }))
         dialog.clear()
       },
     },
@@ -1120,7 +1157,7 @@ export function Session() {
         <Show when={sidebarVisible()}>
           <Switch>
             <Match when={wide()}>
-              <Sidebar sessionID={route.sessionID} />
+              <Sidebar sessionID={route.sessionID} hideDiff={diffHidden()} />
             </Match>
             <Match when={!wide()}>
               <box
@@ -1132,7 +1169,7 @@ export function Session() {
                 alignItems="flex-end"
                 backgroundColor={RGBA.fromInts(0, 0, 0, 70)}
               >
-                <Sidebar sessionID={route.sessionID} />
+                <Sidebar sessionID={route.sessionID} hideDiff={diffHidden()} />
               </box>
             </Match>
           </Switch>
