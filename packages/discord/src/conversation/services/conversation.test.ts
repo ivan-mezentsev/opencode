@@ -8,7 +8,7 @@ import { ChannelId, GuildId, SandboxId, SessionId, SessionInfo, ThreadId } from 
 import { Mention, ThreadMessage, ThreadRef, Typing, type Action, type Inbound } from "../model/schema"
 import { History } from "./history"
 import { Inbox } from "./inbox"
-import { ConversationLedger, MessageState } from "./ledger"
+import { ConversationLedger } from "./ledger"
 import { Outbox } from "./outbox"
 import { Threads } from "./threads"
 import { Conversation } from "./conversation"
@@ -447,55 +447,24 @@ describe("Conversation", () => {
 
 // --- Duplicate processing tests ---
 
-/** A ledger that tracks admit/start calls and enforces dedup like the real one */
+/** A ledger that tracks dedup calls */
 const makeTrackingLedger = () => {
-  const admitted = new Set<string>()
-  const started = new Set<string>()
-  const completed = new Set<string>()
-  const admitCalls: Array<string> = []
-  const startCalls: Array<string> = []
+  const seen = new Set<string>()
+  const dedupCalls: Array<string> = []
 
   const service: ConversationLedger.Service = {
-    admit: (event) =>
+    dedup: (message_id) =>
       Effect.sync(() => {
-        admitCalls.push(event.message_id)
-        if (admitted.has(event.message_id)) return false
-        admitted.add(event.message_id)
+        dedupCalls.push(message_id)
+        if (seen.has(message_id)) return false
+        seen.add(message_id)
         return true
       }),
-    replayPending: () => Effect.succeed([]),
-    start: (message_id) =>
-      Effect.sync(() => {
-        startCalls.push(message_id)
-        if (started.has(message_id) || completed.has(message_id)) return Option.none()
-        started.add(message_id)
-        return Option.some(MessageState.make({
-          thread_id: null,
-          channel_id: null,
-          response_text: null,
-          prompt_text: null,
-          session_id: null,
-        }))
-      }),
-    setTarget: () => Effect.void,
-    setPrompt: () => Effect.void,
-    setResponse: () => Effect.void,
-    complete: (message_id) =>
-      Effect.sync(() => {
-        started.delete(message_id)
-        completed.add(message_id)
-      }),
-    retry: (message_id) =>
-      Effect.sync(() => {
-        started.delete(message_id)
-        // Back to pending — NOT completed, so start will work again
-      }),
-    prune: () => Effect.void,
     getOffset: () => Effect.succeed(Option.none()),
     setOffset: () => Effect.void,
   }
 
-  return { service, admitted, started, completed, admitCalls, startCalls }
+  return { service, seen, dedupCalls }
 }
 
 const makeConversationLayerWithLedger = (props: {
@@ -622,10 +591,8 @@ describe("Conversation duplicate processing", () => {
       const conversation = yield* Conversation
       yield* conversation.run
 
-      // The ledger should have been called twice with admit
-      expect(ledger.admitCalls).toEqual(["m1", "m1"])
-      // But only one start should have succeeded
-      expect(ledger.startCalls.length).toBeLessThanOrEqual(2)
+      // The ledger should have been called twice with dedup
+      expect(ledger.dedupCalls).toEqual(["m1", "m1"])
       // The agent should have received the prompt only once
       expect(prompts).toEqual(["hello"])
       // Only one typing + one send
@@ -633,12 +600,12 @@ describe("Conversation duplicate processing", () => {
     }).pipe(Effect.provide(live))
   })
 
-  effectTest("noop ledger now deduplicates (bug is fixed)", () => {
+  effectTest("noop ledger deduplicates", () => {
     const actions: Array<Action> = []
     const prompts: Array<string> = []
     const event = makeEvent("hello")
 
-    // The noop ledger now tracks seen message_ids
+    // The noop ledger tracks seen message_ids
     const live = makeConversationLayer({
       events: [event, event],
       tracked: Option.none(),
@@ -684,88 +651,6 @@ describe("Conversation duplicate processing", () => {
 
       expect(prompts).toEqual(["help me"])
       expect(actions.filter((x) => x.kind === "send").length).toBe(1)
-    }).pipe(Effect.provide(live))
-  })
-
-  effectTest("retry resets to pending and second run processes again", () => {
-    const actions: Array<Action> = []
-    const prompts: Array<string> = []
-    const sendCount = { value: 0 }
-
-    // A ledger that allows retry -> re-process flow
-    const admitted = new Set<string>()
-    const state = new Map<string, "pending" | "processing" | "completed">()
-    const ledgerService: ConversationLedger.Service = {
-      admit: (event) =>
-        Effect.sync(() => {
-          if (admitted.has(event.message_id)) return false
-          admitted.add(event.message_id)
-          state.set(event.message_id, "pending")
-          return true
-        }),
-      replayPending: () => Effect.succeed([]),
-      start: (message_id) =>
-        Effect.sync(() => {
-          if (state.get(message_id) !== "pending") return Option.none()
-          state.set(message_id, "processing")
-          return Option.some(MessageState.make({
-            thread_id: null,
-            channel_id: null,
-            response_text: null,
-            prompt_text: null,
-            session_id: null,
-          }))
-        }),
-      setTarget: () => Effect.void,
-      setPrompt: () => Effect.void,
-      setResponse: () => Effect.void,
-      complete: (message_id) =>
-        Effect.sync(() => { state.set(message_id, "completed") }),
-      retry: (message_id) =>
-        Effect.sync(() => { state.set(message_id, "pending") }),
-      prune: () => Effect.void,
-      getOffset: () => Effect.succeed(Option.none()),
-      setOffset: () => Effect.void,
-    }
-
-    const event = makeEvent("build it")
-
-    const live = makeConversationLayerWithLedger({
-      events: [],
-      tracked: Option.none(),
-      resolves: [makeSession("s1"), makeSession("s2")],
-      send: (_session, text) => {
-        sendCount.value += 1
-        if (sendCount.value === 1) {
-          return Effect.fail(
-            SandboxDeadError.make({
-              threadId: ThreadId.make("t1"),
-              reason: "dead",
-            }),
-          )
-        }
-        return Effect.succeed(`ok:${text}`)
-      },
-      rehydrate: (_threadId, latest) => Effect.succeed(`rehydrated:${latest}`),
-      actions,
-      prompts,
-      ledger: ledgerService,
-    })
-
-    return Effect.gen(function* () {
-      const conversation = yield* Conversation
-      // First turn fails (SandboxDeadError caught + recovery), so it processes once
-      yield* conversation.turn(event)
-
-      // After the first turn, the ledger state should be completed (recovery succeeded inline)
-      // A second turn with the same event should be blocked by admit
-      yield* conversation.turn(event)
-
-      // The second turn should NOT have sent the prompt again
-      // (admit returns false because the message was already admitted)
-      const sendActions = actions.filter((x) => x.kind === "send")
-      // The first turn should have: recovery message + successful reply
-      expect(sendActions.length).toBeGreaterThanOrEqual(1)
     }).pipe(Effect.provide(live))
   })
 

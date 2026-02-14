@@ -4,7 +4,7 @@ import { TurnRouter } from "../../discord/turn-routing"
 import { ActorMap } from "../../lib/actors/keyed"
 import { ThreadAgentPool } from "../../sandbox/pool"
 import type { ChannelId, ThreadId } from "../../types"
-import { type ConversationError, messageOf, ReliabilityError, RoutingError, SandboxSendError } from "../model/errors"
+import { type ConversationError, messageOf, RoutingError, SandboxSendError } from "../model/errors"
 import { Send, type Inbound } from "../model/schema"
 import { History } from "./history"
 import { Inbox } from "./inbox"
@@ -53,15 +53,7 @@ export class Conversation extends Context.Tag("@discord/conversation/Conversatio
           SandboxSendError.make({
             thread_id,
             message: messageOf(cause),
-              retriable: RETRIABLE_TAGS.has(cause._tag),
-          })
-
-      const asReliabilityError = (message_id: string) =>
-        (cause: unknown): ReliabilityError =>
-          ReliabilityError.make({
-            message_id,
-            message: messageOf(cause),
-            retriable: true,
+            retriable: RETRIABLE_TAGS.has(cause._tag),
           })
 
       const publishText = (threadId: ThreadId, text: string) =>
@@ -86,29 +78,31 @@ export class Conversation extends Context.Tag("@discord/conversation/Conversatio
         if (event.mentions_everyone) return false
         if (!event.content.trim()) return false
 
-        const mentioned = event.mentions.user_ids.includes(event.bot_user_id)
-          || (event.bot_role_id.length > 0 && event.mentions.role_ids.includes(event.bot_role_id))
+        const mentioned =
+          event.mentions.user_ids.includes(event.bot_user_id) ||
+          (event.bot_role_id.length > 0 && event.mentions.role_ids.includes(event.bot_role_id))
         if (event.kind === "channel_message") return mentioned
         if (mentioned) return true
 
-        const owned = yield* pool.hasTrackedThread(event.thread_id).pipe(
-          Effect.mapError(asSendError(event.thread_id)),
-        )
+        const owned = yield* pool.hasTrackedThread(event.thread_id).pipe(Effect.mapError(asSendError(event.thread_id)))
         if (!owned) return false
 
-        const decision = yield* router.shouldRespond({
-          content: event.content,
-          botUserId: event.bot_user_id,
-          botRoleId: event.bot_role_id,
-          mentionedUserIds: event.mentions.user_ids,
-          mentionedRoleIds: event.mentions.role_ids,
-        }).pipe(
-          Effect.mapError((cause) =>
-            RoutingError.make({
-              message: messageOf(cause),
-              retriable: false,
-            })),
-        )
+        const decision = yield* router
+          .shouldRespond({
+            content: event.content,
+            botUserId: event.bot_user_id,
+            botRoleId: event.bot_role_id,
+            mentionedUserIds: event.mentions.user_ids,
+            mentionedRoleIds: event.mentions.role_ids,
+          })
+          .pipe(
+            Effect.mapError((cause) =>
+              RoutingError.make({
+                message: messageOf(cause),
+                retriable: false,
+              }),
+            ),
+          )
         return decision.shouldRespond
       })
 
@@ -125,18 +119,15 @@ export class Conversation extends Context.Tag("@discord/conversation/Conversatio
         target: { thread_id: ThreadId; channel_id: ChannelId },
       ) {
         const toSendError = asSendError(target.thread_id)
-        const tracked = yield* pool.getTrackedSession(target.thread_id).pipe(
-          Effect.mapError(toSendError),
-        )
-        const agent = yield* pool.getOrCreate(target.thread_id, target.channel_id, event.guild_id).pipe(
-          Effect.mapError(toSendError),
-        )
-        const current = yield* agent.current().pipe(
-          Effect.mapError(toSendError),
-        )
-        const prompt = Option.isSome(tracked) && tracked.value.sessionId !== current.sessionId
-          ? yield* history.rehydrate(target.thread_id, event.content)
-          : event.content
+        const tracked = yield* pool.getTrackedSession(target.thread_id).pipe(Effect.mapError(toSendError))
+        const agent = yield* pool
+          .getOrCreate(target.thread_id, target.channel_id, event.guild_id)
+          .pipe(Effect.mapError(toSendError))
+        const current = yield* agent.current().pipe(Effect.mapError(toSendError))
+        const prompt =
+          Option.isSome(tracked) && tracked.value.sessionId !== current.sessionId
+            ? yield* history.rehydrate(target.thread_id, event.content)
+            : event.content
         return { target, agent, prompt, session: current }
       })
 
@@ -149,7 +140,9 @@ export class Conversation extends Context.Tag("@discord/conversation/Conversatio
             return true
           }
           if (text === "!status") {
-            const tracked = yield* pool.getTrackedSession(target.thread_id).pipe(Effect.catchAll(() => Effect.succeed(Option.none())))
+            const tracked = yield* pool
+              .getTrackedSession(target.thread_id)
+              .pipe(Effect.catchAll(() => Effect.succeed(Option.none())))
             if (Option.isNone(tracked)) {
               yield* publishText(target.thread_id, "*No active session for this thread.*")
             } else {
@@ -170,30 +163,10 @@ export class Conversation extends Context.Tag("@discord/conversation/Conversatio
           return false
         })
 
-      const turnRaw = Effect.fn("Conversation.turnRaw")(function* (
-        event: Inbound,
-        state: {
-          thread_id: ThreadId | null
-          channel_id: ChannelId | null
-          response_text: string | null
-          prompt_text: string | null
-          session_id: string | null
-        },
-      ) {
+      const turnRaw = Effect.fn("Conversation.turnRaw")(function* (event: Inbound) {
         if (!(yield* route(event))) return
 
-        const target = state.thread_id && state.channel_id
-          ? { thread_id: state.thread_id, channel_id: state.channel_id }
-          : yield* resolve(event)
-
-        yield* ledger.setTarget(event.message_id, target.thread_id, target.channel_id).pipe(
-          Effect.mapError(asReliabilityError(event.message_id)),
-        )
-
-        if (state.response_text) {
-          yield* publishText(target.thread_id, state.response_text)
-          return
-        }
+        const target = yield* resolve(event)
 
         if (yield* command(event, target)) return
 
@@ -206,116 +179,75 @@ export class Conversation extends Context.Tag("@discord/conversation/Conversatio
           }),
         )
 
-        yield* outbox.withTyping(
-          target.thread_id,
-          Effect.gen(function* () {
-            const input = yield* buildInput(event, target)
-            const reuse = state.prompt_text !== null
-              && state.session_id !== null
-              && state.session_id === input.session.sessionId
-            const prompt = reuse ? (state.prompt_text ?? input.prompt) : input.prompt
-            if (!reuse) {
-              yield* ledger.setPrompt(event.message_id, prompt, input.session.sessionId).pipe(
-                Effect.mapError(asReliabilityError(event.message_id)),
+        yield* outbox
+          .withTyping(
+            target.thread_id,
+            Effect.gen(function* () {
+              const input = yield* buildInput(event, target)
+
+              const reply = yield* input.agent.send(input.prompt).pipe(
+                Effect.catchTag("SandboxDeadError", () =>
+                  Effect.gen(function* () {
+                    yield* publishText(input.target.thread_id, "*Session changed state, recovering...*")
+                    const toErr = asSendError(input.target.thread_id)
+                    const next = yield* pool
+                      .getOrCreate(input.target.thread_id, input.target.channel_id, event.guild_id)
+                      .pipe(Effect.mapError(toErr))
+                    const nextSession = yield* next.current().pipe(Effect.mapError(toErr))
+                    const prompt =
+                      nextSession.sessionId !== input.session.sessionId
+                        ? yield* history.rehydrate(input.target.thread_id, event.content)
+                        : event.content
+                    return yield* next.send(prompt)
+                  }),
+                ),
+                Effect.mapError(asSendError(input.target.thread_id)),
               )
-            } else {
-              yield* Effect.logInfo("Recovered in-flight prompt from ledger").pipe(
+
+              yield* Effect.logInfo("Bot reply").pipe(
                 Effect.annotateLogs({
-                  event: "conversation.ledger.prompt.reused",
-                  message_id: event.message_id,
-                  thread_id: target.thread_id,
+                  event: "conversation.bot.reply",
+                  thread_id: input.target.thread_id,
+                  content: reply.slice(0, 200),
                 }),
               )
-            }
-
-            const reply = yield* input.agent.send(prompt).pipe(
-              Effect.catchTag("SandboxDeadError", () =>
-                Effect.gen(function* () {
-                  yield* publishText(input.target.thread_id, "*Session changed state, recovering...*")
-                  const toErr = asSendError(input.target.thread_id)
-                  const next = yield* pool.getOrCreate(
-                    input.target.thread_id,
-                    input.target.channel_id,
-                    event.guild_id,
-                  ).pipe(Effect.mapError(toErr))
-                  const nextSession = yield* next.current().pipe(
-                    Effect.mapError(toErr),
-                  )
-                  const prompt = nextSession.sessionId !== input.session.sessionId
-                    ? yield* history.rehydrate(input.target.thread_id, event.content)
-                    : event.content
-                  return yield* next.send(prompt)
-                }),
-              ),
-              Effect.mapError(asSendError(input.target.thread_id)),
-            )
-
-            yield* Effect.logInfo("Bot reply").pipe(
-              Effect.annotateLogs({
-                event: "conversation.bot.reply",
-                thread_id: input.target.thread_id,
-                content: reply.slice(0, 200),
-              }),
-            )
-            yield* ledger.setResponse(event.message_id, reply).pipe(
-              Effect.mapError(asReliabilityError(event.message_id)),
-            )
-            yield* publishText(input.target.thread_id, reply)
-          }),
-        ).pipe(
-          Effect.catchAll(reportFailure(target.thread_id)),
-        )
+              yield* publishText(input.target.thread_id, reply)
+            }),
+          )
+          .pipe(Effect.catchAll(reportFailure(target.thread_id)))
       })
 
       const keyOf = (event: Inbound) =>
-        event.kind === "thread_message"
-          ? `thread:${event.thread_id}`
-          : `channel:${event.channel_id}`
+        event.kind === "thread_message" ? `thread:${event.thread_id}` : `channel:${event.channel_id}`
 
-      const runEvent = Effect.fn("Conversation.runEvent")(function* (event: Inbound) {
-        yield* ledger.admit(event).pipe(
-          Effect.mapError(asReliabilityError(event.message_id)),
-        )
-        const state = yield* ledger.start(event.message_id).pipe(
-          Effect.mapError(asReliabilityError(event.message_id)),
-        )
-        if (Option.isNone(state)) return
-
-        yield* turnRaw(event, state.value).pipe(
-          Effect.tap(() =>
-            ledger.complete(event.message_id).pipe(
-              Effect.mapError(asReliabilityError(event.message_id)),
-            )),
-          Effect.catchAll((error) =>
-            ledger.retry(event.message_id, messageOf(error).slice(0, 500)).pipe(
-              Effect.mapError(asReliabilityError(event.message_id)),
-              Effect.zipRight(Effect.fail(error)),
-            )),
-        )
-      })
+      const processEvent = (event: Inbound) => actors.run(keyOf(event), turnRaw(event), { touch: false })
 
       const turn = Effect.fn("Conversation.turn")(function* (event: Inbound) {
-        yield* actors.run(
-          keyOf(event),
-          runEvent(event),
-          { touch: false },
-        )
+        const fresh = yield* ledger.dedup(event.message_id)
+        if (!fresh) return
+        yield* processEvent(event)
       })
 
       const run = inbox.events.pipe(
         Stream.mapEffect(
           (event) =>
-            turn(event).pipe(
-              Effect.retry(turnRetry),
-              Effect.catchAll((error) =>
-                Effect.logError("Conversation turn failed").pipe(
-                  Effect.annotateLogs({
-                    event: "conversation.turn.failed",
-                    tag: error._tag,
-                    retriable: error.retriable,
-                    message: error.message,
-                  }),
-                )),
+            ledger.dedup(event.message_id).pipe(
+              Effect.flatMap((fresh) => {
+                if (!fresh) return Effect.void
+                return processEvent(event).pipe(
+                  Effect.retry(turnRetry),
+                  Effect.catchAll((error) =>
+                    Effect.logError("Conversation turn failed").pipe(
+                      Effect.annotateLogs({
+                        event: "conversation.turn.failed",
+                        tag: error._tag,
+                        retriable: error.retriable,
+                        message: error.message,
+                      }),
+                    ),
+                  ),
+                )
+              }),
             ),
           { concurrency: "unbounded", unordered: true },
         ),

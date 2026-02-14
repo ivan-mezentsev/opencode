@@ -21,10 +21,9 @@ This module is wired into `src/index.ts`.
 
 Reliability semantics:
 
-- inbound events are durably admitted by `message_id` before processing
-- pending events replay on startup
+- in-memory dedup by `message_id` prevents double-processing within a session
 - startup catch-up fetches missed Discord messages from tracked thread sources and allowed channels using persisted offsets
-- response text is cached before Discord delivery so retries can re-publish without re-calling the model
+- Discord is the durable inbox — on startup we resume from where we left off per source
 
 Local CLI notes (`bun run conversation:cli`):
 

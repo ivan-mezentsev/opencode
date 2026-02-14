@@ -23,24 +23,6 @@ const TABLE = `CREATE TABLE IF NOT EXISTS discord_sessions (
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`
 
-const INBOX_TABLE = `CREATE TABLE IF NOT EXISTS conversation_inbox (
-  message_id TEXT PRIMARY KEY,
-  kind TEXT NOT NULL CHECK (kind IN ('thread_message', 'channel_message')),
-  payload_json TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'completed')),
-  thread_id TEXT,
-  channel_id TEXT,
-  prompt_text TEXT,
-  session_id TEXT,
-  response_text TEXT,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  processing_started_at TEXT,
-  completed_at TEXT,
-  last_error TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-)`
-
 const OFFSETS_TABLE = `CREATE TABLE IF NOT EXISTS conversation_offsets (
   source_id TEXT PRIMARY KEY,
   last_message_id TEXT NOT NULL,
@@ -62,21 +44,6 @@ const COLUMNS = [
   ["resume_fail_count", "INTEGER NOT NULL DEFAULT 0"],
 ] as const
 
-const INBOX_COLUMNS = [
-  ["status", "TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed'))"],
-  ["thread_id", "TEXT"],
-  ["channel_id", "TEXT"],
-  ["prompt_text", "TEXT"],
-  ["session_id", "TEXT"],
-  ["response_text", "TEXT"],
-  ["attempts", "INTEGER NOT NULL DEFAULT 0"],
-  ["processing_started_at", "TEXT"],
-  ["completed_at", "TEXT"],
-  ["last_error", "TEXT"],
-  ["created_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
-  ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
-] as const
-
 const OFFSET_COLUMNS = [
   ["last_message_id", "TEXT NOT NULL"],
   ["updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"],
@@ -89,13 +56,6 @@ const INDEXES = [
     ON discord_sessions (status, updated_at)`,
 ] as const
 
-const INBOX_INDEXES = [
-  `CREATE INDEX IF NOT EXISTS conversation_inbox_status_created_at_idx
-    ON conversation_inbox (status, created_at)`,
-  `CREATE INDEX IF NOT EXISTS conversation_inbox_completed_at_idx
-    ON conversation_inbox (completed_at)`,
-] as const
-
 const OFFSET_INDEXES = [
   `CREATE INDEX IF NOT EXISTS conversation_offsets_updated_at_idx
     ON conversation_offsets (updated_at)`,
@@ -104,18 +64,11 @@ const OFFSET_INDEXES = [
 export default Effect.gen(function* () {
   const db = yield* Client.SqlClient
   yield* db.unsafe(TABLE)
-  yield* db.unsafe(INBOX_TABLE)
   yield* db.unsafe(OFFSETS_TABLE)
 
   const names = new Set((yield* db<{ name: string }>`PRAGMA table_info(discord_sessions)`).map((row) => row.name))
   const missing = COLUMNS.filter(([name]) => !names.has(name))
   yield* Effect.forEach(missing, ([name, definition]) => db.unsafe(`ALTER TABLE discord_sessions ADD COLUMN ${name} ${definition}`), {
-    discard: true,
-  })
-
-  const inboxNames = new Set((yield* db<{ name: string }>`PRAGMA table_info(conversation_inbox)`).map((row) => row.name))
-  const inboxMissing = INBOX_COLUMNS.filter(([name]) => !inboxNames.has(name))
-  yield* Effect.forEach(inboxMissing, ([name, definition]) => db.unsafe(`ALTER TABLE conversation_inbox ADD COLUMN ${name} ${definition}`), {
     discard: true,
   })
 
@@ -126,6 +79,5 @@ export default Effect.gen(function* () {
   })
 
   yield* Effect.forEach(INDEXES, (index) => db.unsafe(index), { discard: true })
-  yield* Effect.forEach(INBOX_INDEXES, (index) => db.unsafe(index), { discard: true })
   yield* Effect.forEach(OFFSET_INDEXES, (index) => db.unsafe(index), { discard: true })
 })

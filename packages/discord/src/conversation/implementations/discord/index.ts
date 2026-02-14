@@ -193,7 +193,7 @@ export class DiscordConversationServices {
       const uniq = <A>(values: ReadonlyArray<A>): Array<A> => [...new Set(values)]
 
       const offer = (event: Inbound, onFresh: Effect.Effect<void>) =>
-        ledger.admit(event).pipe(
+        ledger.dedup(event.message_id).pipe(
           Effect.flatMap((fresh) => {
             if (!fresh) {
               return Effect.logDebug("Message deduped (already seen)").pipe(
@@ -543,7 +543,7 @@ export class DiscordConversationServices {
             }),
             content: text,
           })
-          const ingest = ledger.admit(event).pipe(
+          const ingest = ledger.dedup(event.message_id).pipe(
             Effect.flatMap((fresh) => {
               if (!fresh) return Effect.void
               return Effect.sync(() => {
@@ -614,28 +614,6 @@ export class DiscordConversationServices {
         Effect.catchAll((error) =>
           Effect.logError("Discord catch-up failed").pipe(
             Effect.annotateLogs({ event: "conversation.catchup.failed", error: messageOf(error) }),
-          )),
-      )
-
-      yield* ledger.replayPending().pipe(
-        Effect.flatMap((events) =>
-          Effect.forEach(
-            events,
-            (event) =>
-              Effect.sync(() => {
-                input.unsafeOffer(event)
-              }),
-            { discard: true },
-          ).pipe(
-            Effect.zipRight(
-              Effect.logInfo("Replayed pending conversation events").pipe(
-                Effect.annotateLogs({ event: "conversation.ledger.replay", count: events.length }),
-              ),
-            ),
-          )),
-        Effect.catchAll((error) =>
-          Effect.logError("Failed replaying pending conversation events").pipe(
-            Effect.annotateLogs({ event: "conversation.ledger.replay.failed", error: messageOf(error) }),
           )),
       )
 

@@ -48,22 +48,12 @@ export class SandboxSendError extends Schema.TaggedError<SandboxSendError>()(
   },
 ) {}
 
-export class ReliabilityError extends Schema.TaggedError<ReliabilityError>()(
-  "ReliabilityError",
-  {
-    message_id: Schema.String,
-    message: Schema.String,
-    retriable: Schema.Boolean,
-  },
-) {}
-
 export const ConversationError = Schema.Union(
   ThreadEnsureError,
   HistoryError,
   DeliveryError,
   RoutingError,
   SandboxSendError,
-  ReliabilityError,
 )
 
 export type ConversationError = typeof ConversationError.Type
