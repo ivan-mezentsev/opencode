@@ -6,7 +6,7 @@ const DeliveryAction = Schema.Literal("typing", "send", "reply")
 export class ThreadEnsureError extends Schema.TaggedError<ThreadEnsureError>()(
   "ThreadEnsureError",
   {
-    channel_id: ChannelId,
+    channelId: ChannelId,
     message: Schema.String,
     retriable: Schema.Boolean,
   },
@@ -15,7 +15,7 @@ export class ThreadEnsureError extends Schema.TaggedError<ThreadEnsureError>()(
 export class HistoryError extends Schema.TaggedError<HistoryError>()(
   "HistoryError",
   {
-    thread_id: ThreadId,
+    threadId: ThreadId,
     message: Schema.String,
     retriable: Schema.Boolean,
   },
@@ -24,7 +24,7 @@ export class HistoryError extends Schema.TaggedError<HistoryError>()(
 export class DeliveryError extends Schema.TaggedError<DeliveryError>()(
   "DeliveryError",
   {
-    thread_id: ThreadId,
+    threadId: ThreadId,
     action: DeliveryAction,
     message: Schema.String,
     retriable: Schema.Boolean,
@@ -42,7 +42,7 @@ export class RoutingError extends Schema.TaggedError<RoutingError>()(
 export class SandboxSendError extends Schema.TaggedError<SandboxSendError>()(
   "SandboxSendError",
   {
-    thread_id: ThreadId,
+    threadId: ThreadId,
     message: Schema.String,
     retriable: Schema.Boolean,
   },

@@ -4,12 +4,10 @@ import * as Migrator from "@effect/sql/Migrator"
 import * as Client from "@effect/sql/SqlClient"
 import { Effect } from "effect"
 import migration0001 from "./migrations/0001_discord_sessions"
-import migration0002 from "./migrations/0002_conversation_offsets"
 
 const run = Migrator.make({})({
   loader: Migrator.fromRecord({
     "0001_discord_sessions": migration0001,
-    "0002_conversation_offsets": migration0002,
   }),
 })
 

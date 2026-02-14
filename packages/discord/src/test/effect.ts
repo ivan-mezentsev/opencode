@@ -44,6 +44,7 @@ export const testConfigLayer = Layer.succeed(
     discordCommandGuildId: "",
     databasePath: ":memory:",
     daytonaApiKey: Redacted.make("test"),
+    daytonaSnapshot: "",
     openCodeZenApiKey: Redacted.make("test"),
     githubToken: "",
     logLevel: "info" as const,

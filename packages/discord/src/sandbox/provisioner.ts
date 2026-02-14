@@ -12,10 +12,10 @@ import {
   type SandboxNotFoundError,
   type SandboxStartError,
 } from "../errors"
-import { SessionStore } from "../sessions/store"
+import { SessionStore } from "../session/store"
 import { ChannelId, GuildId, PreviewAccess, SandboxId, SessionInfo, ThreadId } from "../types"
-import { DaytonaService, type SandboxHandle } from "./daytona"
-import { OpenCodeClient, OpenCodeSessionSummary } from "./opencode-client"
+import { DaytonaService, type SandboxHandle } from "./daytona/service"
+import { OpenCodeClient, OpenCodeSessionSummary } from "./opencode/client"
 
 import { logIgnore } from "../lib/log"
 
@@ -51,7 +51,6 @@ export class ResumeFailed extends Schema.Class<ResumeFailed>("ResumeFailed")({
 }) {}
 
 export type ResumeResult = Resumed | ResumeFailed
-type SendFailure = "session-missing" | "sandbox-down" | "non-recoverable"
 
 export declare namespace SandboxProvisioner {
   export interface Service {
@@ -179,13 +178,6 @@ export class SandboxProvisioner extends Context.Tag("@discord/SandboxProvisioner
 
       const restartOpenCodeServe =
         'pkill -f \'opencode serve --port 4096\' >/dev/null 2>&1 || true; for d in "$HOME/opencode" "/home/daytona/opencode" "/root/opencode"; do if [ -d "$d" ]; then cd "$d" && setsid opencode serve --port 4096 --hostname 0.0.0.0 > /tmp/opencode.log 2>&1 & exit 0; fi; done; exit 1'
-      const classifySendError = (error: OpenCodeClientError): SendFailure => {
-        if (error.statusCode === 404) return "session-missing"
-        if (error.statusCode === 0 || error.statusCode >= 500) return "sandbox-down"
-        const body = error.body.toLowerCase()
-        if (body.includes("sandbox not found") || body.includes("is the sandbox started")) return "sandbox-down"
-        return "non-recoverable"
-      }
 
       const provision = Effect.fn("SandboxProvisioner.provision")(function* (
         threadId: ThreadId,
@@ -452,7 +444,7 @@ export class SandboxProvisioner extends Context.Tag("@discord/SandboxProvisioner
         session: SessionInfo,
         error: OpenCodeClientError,
       ) {
-        const kind = classifySendError(error)
+        const kind = error.kind
         if (kind === "non-recoverable") return session
 
         yield* store.incrementResumeFailure(threadId, String(error))

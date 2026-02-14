@@ -218,19 +218,21 @@
       "version": "0.1.0",
       "dependencies": {
         "@daytonaio/sdk": "latest",
-        "@effect/ai": "^0.33.2",
-        "@effect/ai-anthropic": "^0.23.0",
-        "@effect/experimental": "^0.58.0",
-        "@effect/platform": "latest",
+        "@effect/ai": "0.33.2",
+        "@effect/ai-anthropic": "0.23.0",
+        "@effect/cluster": "0.56.4",
+        "@effect/experimental": "0.58.0",
+        "@effect/platform": "0.94.5",
         "@effect/platform-bun": "0.87.1",
-        "@effect/sql-sqlite-bun": "^0.50.0",
+        "@effect/rpc": "0.73.1",
+        "@effect/sql-sqlite-bun": "0.50.2",
         "@opencode-ai/sdk": "latest",
         "discord.js": "^14",
-        "effect": "^3",
+        "effect": "3.19.17",
       },
       "devDependencies": {
         "@effect/language-service": "0.73.1",
-        "@effect/sql": "^0.49.0",
+        "@effect/sql": "0.49.0",
         "@types/bun": "latest",
         "@types/node": "^22",
         "typescript": "^5",
@@ -907,19 +909,19 @@
 
     "@effect/ai-anthropic": ["@effect/ai-anthropic@0.23.0", "", { "dependencies": { "@anthropic-ai/tokenizer": "^0.0.4" }, "peerDependencies": { "@effect/ai": "^0.33.0", "@effect/experimental": "^0.58.0", "@effect/platform": "^0.94.0", "effect": "^3.19.13" } }, "sha512-ftkyQpTY4OCPTe9hlB53WCXseWm11lOf+zXDNCJG2nAqW5mZ+4kd/PPiqV7jd2zDukAtLc0I+R3EGs1fOLCG5A=="],
 
-    "@effect/cluster": ["@effect/cluster@0.56.3", "", { "dependencies": { "kubernetes-types": "^1.30.0" }, "peerDependencies": { "@effect/platform": "^0.94.4", "@effect/rpc": "^0.73.0", "@effect/sql": "^0.49.0", "@effect/workflow": "^0.16.0", "effect": "^3.19.16" } }, "sha512-SimiwC4Gzy71wnWOkAMdwxdo9CQhePGXrEz5OC5LQdIvoSzTCu9z82Rj8X5Vo1m1wlz6oNc3WmQLnwbbt/Eukg=="],
+    "@effect/cluster": ["@effect/cluster@0.56.4", "", { "dependencies": { "kubernetes-types": "^1.30.0" }, "peerDependencies": { "@effect/platform": "^0.94.5", "@effect/rpc": "^0.73.1", "@effect/sql": "^0.49.0", "@effect/workflow": "^0.16.0", "effect": "^3.19.17" } }, "sha512-7Je5/JlbZOlsSxsbKjr97dJed2cNGWsb+TLNgMcr5mRDbcWlFOTUGvsrisEJV6waosYLIg+2omPdvnvRoYKdhA=="],
 
     "@effect/experimental": ["@effect/experimental@0.58.0", "", { "dependencies": { "uuid": "^11.0.3" }, "peerDependencies": { "@effect/platform": "^0.94.0", "effect": "^3.19.13", "ioredis": "^5", "lmdb": "^3" }, "optionalPeers": ["ioredis", "lmdb"] }, "sha512-IEP9sapjF6rFy5TkoqDPc86st/fnqUfjT7Xa3pWJrFGr1hzaMXHo+mWsYOZS9LAOVKnpHuVziDK97EP5qsCHVA=="],
 
     "@effect/language-service": ["@effect/language-service@0.73.1", "", { "bin": { "effect-language-service": "cli.js" } }, "sha512-FbOKzXmP1QM6/YMvDFZGTZ0Gk0AjKqRSY48dpAN0zUdVzq5xV/Us/6vZ5FcdmG6GjgSWP2rpESy59OMvfPeylw=="],
 
-    "@effect/platform": ["@effect/platform@0.94.4", "", { "dependencies": { "find-my-way-ts": "^0.1.6", "msgpackr": "^1.11.4", "multipasta": "^0.2.7" }, "peerDependencies": { "effect": "^3.19.16" } }, "sha512-mK8pbskFAcBRA5Ooyt02kCBuWltZakyaDcM4ByTY0jXQMFC3NUveNK62JVH7XB+f3XZ8OoBBxUnlLben4plEKQ=="],
+    "@effect/platform": ["@effect/platform@0.94.5", "", { "dependencies": { "find-my-way-ts": "^0.1.6", "msgpackr": "^1.11.4", "multipasta": "^0.2.7" }, "peerDependencies": { "effect": "^3.19.17" } }, "sha512-z05APUiDDPbodhTkH/RJqOLoCU11bU2IZLfcwLFrld03+ob1VeqRnELQlmueLIYm6NZifHAtjl32V+GRt34y4A=="],
 
     "@effect/platform-bun": ["@effect/platform-bun@0.87.1", "", { "dependencies": { "@effect/platform-node-shared": "^0.57.1", "multipasta": "^0.2.7" }, "peerDependencies": { "@effect/cluster": "^0.56.1", "@effect/platform": "^0.94.2", "@effect/rpc": "^0.73.0", "@effect/sql": "^0.49.0", "effect": "^3.19.15" } }, "sha512-I88d0YqWbvLY2GGeIxK3r5k0l/MoUCCnxiHJG+X6gqaHu+pIs0djDtJ+ORhw/3qha9ojcVu6pyaBmnUjgzQHWQ=="],
 
     "@effect/platform-node-shared": ["@effect/platform-node-shared@0.57.1", "", { "dependencies": { "@parcel/watcher": "^2.5.1", "multipasta": "^0.2.7", "ws": "^8.18.2" }, "peerDependencies": { "@effect/cluster": "^0.56.1", "@effect/platform": "^0.94.2", "@effect/rpc": "^0.73.0", "@effect/sql": "^0.49.0", "effect": "^3.19.15" } }, "sha512-oX/bApMdoKsyrDiNdJxo7U9Rz1RXsjRv+ecfAPp1qGlSdGIo32wVRvJ2XCHqYj0sqaYJS0pU0/GCulRfVGuJag=="],
 
-    "@effect/rpc": ["@effect/rpc@0.73.0", "", { "dependencies": { "msgpackr": "^1.11.4" }, "peerDependencies": { "@effect/platform": "^0.94.0", "effect": "^3.19.13" } }, "sha512-iMPf6tTriz8sK0l5x4koFId8Hz5nFptHYg8WqyjHGIIVLTpZxuiSqhmXZG7FnAs5N2n6uCEws4wWGcIgXNUrFg=="],
+    "@effect/rpc": ["@effect/rpc@0.73.1", "", { "dependencies": { "msgpackr": "^1.11.4" }, "peerDependencies": { "@effect/platform": "^0.94.5", "effect": "^3.19.17" } }, "sha512-1Pn6GJl+gCdVl0O38zK8wU/I5UsG6RArDKd8Ndx8BhntZAPIBbuUFgG7KlAKTJjumBTO/YOEgKYdwma0rJq/Tw=="],
 
     "@effect/sql": ["@effect/sql@0.49.0", "", { "dependencies": { "uuid": "^11.0.3" }, "peerDependencies": { "@effect/experimental": "^0.58.0", "@effect/platform": "^0.94.0", "effect": "^3.19.13" } }, "sha512-9UEKR+z+MrI/qMAmSvb/RiD9KlgIazjZUCDSpwNgm0lEK9/Q6ExEyfziiYFVCPiptp52cBw8uBHRic8hHnwqXA=="],
 
@@ -2615,7 +2617,7 @@
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
 
-    "effect": ["effect@3.19.16", "", { "dependencies": { "@standard-schema/spec": "^1.0.0", "fast-check": "^3.23.1" } }, "sha512-7+XC3vGrbAhCHd8LTFHvnZjRpZKZ8YHRZqJTkpNoxcJ2mCyNs2SwI+6VkV/ij8Y3YW7wfBN4EbU06/F5+m/wkQ=="],
+    "effect": ["effect@3.19.17", "", { "dependencies": { "@standard-schema/spec": "^1.0.0", "fast-check": "^3.23.1" } }, "sha512-MChgn9z0y3KJ2DJ+VsZt1bdVDJ0bDIZt9zm4s3iPpRLzgcEGDOIP8pwADjAWifaP0S672nlRE5rZPBbyDcjn1g=="],
 
     "electron-to-chromium": ["electron-to-chromium@1.5.282", "", {}, "sha512-FCPkJtpst28UmFzd903iU7PdeVTfY0KAeJy+Lk0GLZRwgwYHn/irRcaCbQQOmr5Vytc/7rcavsYLvTM8RiHYhQ=="],
 
@@ -4639,7 +4641,7 @@
 
     "@opencode-ai/web/@shikijs/transformers": ["@shikijs/transformers@3.20.0", "", { "dependencies": { "@shikijs/core": "3.20.0", "@shikijs/types": "3.20.0" } }, "sha512-PrHHMRr3Q5W1qB/42kJW6laqFyWdhrPF2hNR9qjOm1xcSiAO3hAHo7HaVyHE6pMyevmy3i51O8kuGGXC78uK3g=="],
 
-    "@opencode/discord/@opencode-ai/sdk": ["@opencode-ai/sdk@1.1.65", "", {}, "sha512-XlpgQJQ5WwO4tYgyyHoTT0NAB5/1StXonabVUAYVpW0JdtbwWFSdFEaLkWx6CU7MNW6ELP+SMC4n6wWO6zRW8Q=="],
+    "@opencode/discord/@opencode-ai/sdk": ["@opencode-ai/sdk@1.2.1", "", {}, "sha512-K5e15mIXTyAykBw0GX+8O28IJHlPMw1jI/m3SDu+hgUHjmg2refqLPqyuqv8hE2nRcuGi8HajhpDJjkO7H2S0A=="],
 
     "@opentelemetry/exporter-logs-otlp-proto/@opentelemetry/sdk-trace-base": ["@opentelemetry/sdk-trace-base@2.2.0", "", { "dependencies": { "@opentelemetry/core": "2.2.0", "@opentelemetry/resources": "2.2.0", "@opentelemetry/semantic-conventions": "^1.29.0" }, "peerDependencies": { "@opentelemetry/api": ">=1.3.0 <1.10.0" } }, "sha512-xWQgL0Bmctsalg6PaXExmzdedSp3gyKV8mQBwK/j9VGdCDu2fmXIb2gAehBKbkXCpJ4HPkgv3QfoJWRT4dHWbw=="],
 

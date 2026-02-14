@@ -97,6 +97,7 @@ This image does not require Docker Compose or special network wiring; only outbo
 | ---------------- | ---------------------------- | -------------------------------------------------- |
 | `DATABASE_PATH`  | `discord.sqlite`             | Path to the local SQLite file                      |
 | `GITHUB_TOKEN`   | _(empty)_                    | Injected into sandboxes for authenticated `gh` CLI |
+| `DAYTONA_SNAPSHOT` | _(empty)_                  | Prebuilt Daytona snapshot name for faster startup  |
 | `OPENCODE_MODEL` | `opencode/claude-sonnet-4-5` | Model used inside OpenCode sessions                |
 
 #### Optional — Bot Behavior
@@ -127,9 +128,24 @@ This image does not require Docker Compose or special network wiring; only outbo
 | `bun run dev`       | Watch mode                  |
 | `bun run start`     | Production run              |
 | `bun run db:init`   | Initialize/migrate database |
+| `bun run snapshot:create` | Build/activate a Daytona snapshot |
 | `bun run typecheck` | TypeScript checks           |
 | `bun run build`     | Bundle for deployment       |
 | `bun run check`     | Typecheck + build           |
+
+### Faster Sandbox Startup (Snapshot)
+
+Build and activate a reusable Daytona snapshot once:
+
+```bash
+bun run snapshot:create opencode-discord-v1
+```
+
+Then set this in `.env`:
+
+```bash
+DAYTONA_SNAPSHOT=opencode-discord-v1
+```
 
 ### Discord Slash Commands
 
@@ -148,11 +164,13 @@ These map to the existing `!status` / `!reset` behavior.
 ```
 Discord / CLI
   └─ Conversation service (Inbox → turn logic → Outbox)
-       ├─ ConversationLedger (dedup, at-least-once delivery, replay on restart)
-       └─ ThreadAgentPool.getOrCreate(threadId)
-            ├─ active? → health check → reuse
-            ├─ paused? → SandboxProvisioner.resume() → reattach session
-            └─ missing? → SandboxProvisioner.provision() → new sandbox + session
+       ├─ IngressDedup (message-id dedup in conversation path)
+       ├─ OffsetStore (durable Discord catch-up offsets)
+       └─ ThreadChatCluster.send(threadId)
+            └─ ThreadEntity (cluster actor per thread)
+                 ├─ active? → health check → reuse
+                 ├─ paused? → SandboxProvisioner.resume() → reattach session
+                 └─ missing? → SandboxProvisioner.provision() → new sandbox + session
 ```
 
 Sessions are persisted in a local SQLite file. Sandbox filesystem (including OpenCode session state) survives pause/resume cycles via Daytona stop/start.

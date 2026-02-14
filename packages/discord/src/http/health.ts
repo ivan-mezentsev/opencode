@@ -3,7 +3,7 @@ import { BunHttpServer } from "@effect/platform-bun"
 import { Context, Effect, Layer } from "effect"
 import { AppConfig } from "../config"
 import { DiscordClient } from "../discord/client"
-import { ThreadAgentPool } from "../sandbox/pool"
+import { SessionStore } from "../session/store"
 
 export declare namespace HealthServer {
   export interface Service {
@@ -17,7 +17,7 @@ export class HealthServer extends Context.Tag("@discord/HealthServer")<HealthSer
     Effect.gen(function* () {
       const config = yield* AppConfig
       const client = yield* DiscordClient
-      const pool = yield* ThreadAgentPool
+      const sessions = yield* SessionStore
       const startedAt = Date.now()
 
       const routes = HttpLayerRouter.use((router) =>
@@ -26,8 +26,9 @@ export class HealthServer extends Context.Tag("@discord/HealthServer")<HealthSer
             "GET",
             "/healthz",
             Effect.gen(function* () {
-              const activeSessions = yield* pool.getActiveSessionCount().pipe(
-                Effect.catchAll(() => Effect.succeed(0)),
+              const activeSessions = yield* sessions.listActive().pipe(
+                Effect.catchAll(() => Effect.succeed([])),
+                Effect.map((rows) => rows.length),
               )
               return HttpServerResponse.unsafeJson({
                 ok: true,

@@ -58,6 +58,7 @@ export declare namespace AppConfig {
     readonly discordCommandGuildId: string
     readonly databasePath: string
     readonly daytonaApiKey: Redacted.Redacted
+    readonly daytonaSnapshot: string
     readonly openCodeZenApiKey: Redacted.Redacted
     readonly githubToken: string
     readonly logLevel: LogLevel
@@ -102,6 +103,9 @@ export class AppConfig extends Context.Tag("@discord/AppConfig")<AppConfig, AppC
         Config.withDefault("discord.sqlite"),
       )
       const daytonaApiKey = yield* Config.redacted("DAYTONA_API_KEY")
+      const daytonaSnapshot = yield* Config.string("DAYTONA_SNAPSHOT").pipe(
+        Config.withDefault(""),
+      )
       const openCodeZenApiKey = yield* Config.redacted("OPENCODE_ZEN_API_KEY")
       const githubToken = yield* Config.string("GITHUB_TOKEN").pipe(
         Config.withDefault(""),
@@ -166,6 +170,7 @@ export class AppConfig extends Context.Tag("@discord/AppConfig")<AppConfig, AppC
         discordCommandGuildId,
         databasePath,
         daytonaApiKey,
+        daytonaSnapshot,
         openCodeZenApiKey,
         githubToken,
         logLevel,

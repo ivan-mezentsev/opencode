@@ -45,14 +45,31 @@ export class HealthCheckError extends Schema.TaggedError<HealthCheckError>()(
   },
 ) {}
 
+export const OpenCodeFailureKind = Schema.Literal("session-missing", "sandbox-down", "non-recoverable")
+export type OpenCodeFailureKind = typeof OpenCodeFailureKind.Type
+
+export const classifyOpenCodeFailure = (statusCode: number, body: string): OpenCodeFailureKind => {
+  if (statusCode === 404) return "session-missing"
+  if (statusCode === 0 || statusCode >= 500) return "sandbox-down"
+  const text = body.toLowerCase()
+  if (text.includes("sandbox not found") || text.includes("is the sandbox started")) return "sandbox-down"
+  return "non-recoverable"
+}
+
 export class OpenCodeClientError extends Schema.TaggedError<OpenCodeClientError>()(
   "OpenCodeClientError",
   {
     operation: Schema.String,
     statusCode: Schema.Number,
     body: Schema.String,
+    kind: OpenCodeFailureKind,
   },
 ) {}
+
+export const isOpenCodeSandboxUnavailable = (error: OpenCodeClientError) => {
+  if (error.kind === "session-missing") return true
+  return error.kind === "sandbox-down"
+}
 
 export class SessionMissingError extends Schema.TaggedError<SessionMissingError>()(
   "SessionMissingError",
