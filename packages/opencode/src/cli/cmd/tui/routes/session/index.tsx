@@ -152,18 +152,12 @@ export function Session() {
   const [showHeader, setShowHeader] = kv.signal("header_visible", true)
   const [diffWrapMode] = kv.signal<"word" | "none">("diff_wrap_mode", "word")
   const [animationsEnabled, setAnimationsEnabled] = kv.signal("animations_enabled", true)
-  const [clearedDiff, setClearedDiff] = createSignal<Record<string, string>>({})
+  const [clearedDiff, setClearedDiff] = createSignal<Record<string, Record<string, true>>>({})
   const diff = createMemo(() => sync.data.session_diff[route.sessionID] ?? [])
-  const diffStamp = createMemo(() =>
-    diff()
-      .map((item) => `${item.file}:${item.additions}:${item.deletions}`)
-      .join("\n"),
-  )
-  const diffHidden = createMemo(() => {
-    const mark = clearedDiff()[route.sessionID]
-    if (!mark) return false
-    return mark === diffStamp()
-  })
+  const diffKey = (item: { file: string; additions: number; deletions: number }) =>
+    `${item.file}:${item.additions}:${item.deletions}`
+  const hiddenDiff = createMemo(() => clearedDiff()[route.sessionID] ?? {})
+  const visibleDiff = createMemo(() => diff().filter((item) => !hiddenDiff()[diffKey(item)]))
 
   const wide = createMemo(() => dimensions().width > 120)
   const sidebarVisible = createMemo(() => {
@@ -176,14 +170,28 @@ export function Session() {
   const contentWidth = createMemo(() => dimensions().width - (sidebarVisible() ? 42 : 0) - 4)
 
   createEffect(() => {
-    const mark = clearedDiff()[route.sessionID]
-    if (!mark) return
-    if (mark === diffStamp()) return
+    const current = new Set(diff().map((item) => diffKey(item)))
+    const hidden = hiddenDiff()
+    const keys = Object.keys(hidden)
+    if (!keys.length) return
+    const nextHidden = keys.reduce<Record<string, true>>((acc, key) => {
+      if (!current.has(key)) return acc
+      acc[key] = true
+      return acc
+    }, {})
+    if (Object.keys(nextHidden).length === keys.length) return
     setClearedDiff((prev) => {
-      if (!prev[route.sessionID]) return prev
-      const next = { ...prev }
-      delete next[route.sessionID]
-      return next
+      const target = prev[route.sessionID]
+      if (!target) return prev
+      if (!Object.keys(nextHidden).length) {
+        const next = { ...prev }
+        delete next[route.sessionID]
+        return next
+      }
+      return {
+        ...prev,
+        [route.sessionID]: nextHidden,
+      }
     })
   })
 
@@ -554,11 +562,18 @@ export function Session() {
       title: "Clear Modified",
       value: "session.modified.clear",
       category: "Session",
-      enabled: !session()?.parentID && !diffHidden() && diff().length > 0,
+      enabled: !session()?.parentID && visibleDiff().length > 0,
       onSelect: (dialog) => {
+        const nextHidden = diff().reduce<Record<string, true>>((acc, item) => {
+          acc[diffKey(item)] = true
+          return acc
+        }, {})
         setClearedDiff((prev) => ({
           ...prev,
-          [route.sessionID]: diffStamp(),
+          [route.sessionID]: {
+            ...(prev[route.sessionID] ?? {}),
+            ...nextHidden,
+          },
         }))
         dialog.clear()
       },
@@ -1157,7 +1172,7 @@ export function Session() {
         <Show when={sidebarVisible()}>
           <Switch>
             <Match when={wide()}>
-              <Sidebar sessionID={route.sessionID} hideDiff={diffHidden()} />
+              <Sidebar sessionID={route.sessionID} hiddenDiff={hiddenDiff()} />
             </Match>
             <Match when={!wide()}>
               <box
@@ -1169,7 +1184,7 @@ export function Session() {
                 alignItems="flex-end"
                 backgroundColor={RGBA.fromInts(0, 0, 0, 70)}
               >
-                <Sidebar sessionID={route.sessionID} hideDiff={diffHidden()} />
+                <Sidebar sessionID={route.sessionID} hiddenDiff={hiddenDiff()} />
               </box>
             </Match>
           </Switch>

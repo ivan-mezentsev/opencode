@@ -12,13 +12,15 @@ import { useDirectory } from "../../context/directory"
 import { useKV } from "../../context/kv"
 import { TodoItem } from "../../component/todo-item"
 
-export function Sidebar(props: { sessionID: string; overlay?: boolean; hideDiff?: boolean }) {
+export function Sidebar(props: { sessionID: string; overlay?: boolean; hiddenDiff?: Record<string, true> }) {
   const sync = useSync()
   const { theme } = useTheme()
   const session = createMemo(() => sync.session.get(props.sessionID)!)
   const diff = createMemo(() => {
-    if (props.hideDiff) return []
-    return sync.data.session_diff[props.sessionID] ?? []
+    const hidden = props.hiddenDiff ?? {}
+    return (sync.data.session_diff[props.sessionID] ?? []).filter(
+      (item) => !hidden[`${item.file}:${item.additions}:${item.deletions}`],
+    )
   })
   const todo = createMemo(() => sync.data.todo[props.sessionID] ?? [])
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
