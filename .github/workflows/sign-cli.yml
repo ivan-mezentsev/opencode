@@ -34,7 +34,27 @@ jobs:
           path: packages/opencode/dist/opencode-windows-x64/bin/opencode.exe
           if-no-files-found: error
 
-      - name: Upload unsigned Windows CLI
+      - name: Submit SignPath signing request
+        id: submit_signpath_signing_request
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_KEY }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ secrets.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload_unsigned_windows_cli.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-opencode-cli
+
+      - name: Upload signed Windows CLI
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-opencode-windows-cli
+          path: signed-opencode-cli/*.exe
+          if-no-files-found: error
+
+      - name: Upload unsigned Windows baseline CLI
         id: upload_unsigned_windows_baseline_cli
         uses: actions/upload-artifact@v4
         with:
@@ -44,25 +64,18 @@ jobs:
 
       - name: Submit SignPath signing request
         id: submit_signpath_signing_request
-        run: |
-          ./packages/opencode/script/signpath.ts
-        env:
-          API_TOKEN: ${{ secrets.SIGNPATH_API_KEY }}
-          ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
-          ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
-          GITHUB_ARTIFACT_ID: ${{ steps.upload_unsigned_windows_cli.outputs.artifact-id }}
-          WAIT_FOR_COMPLETION-for-completion: true
-          OUTPUT_ARTIFACT_DIRECTORY: signed-opencode-cli
-          GITHUB_TOKEN: ${{ github.token }}
-          INPUT_ARTIFACTS: |
-            [
-              ["${{ steps.upload_unsigned_windows_cli.outputs.artifact-id }}", "./packages/opencode/dist/opencode-windows-x64/bin/opencode.exe"],
-              ["${{ steps.upload_unsigned_windows_baseline_cli.outputs.artifact-id }}", "./packages/opencode/dist/opencode-windows-x64-baseline/bin/opencode.exe"]
-            ]
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_KEY }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ secrets.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload_unsigned_windows_baseline_cli.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-opencode-cli
 
-      - name: Upload signed Windows CLI
+      - name: Upload signed Windows baseline CLI
         uses: actions/upload-artifact@v4
         with:
           name: signed-opencode-windows-cli
