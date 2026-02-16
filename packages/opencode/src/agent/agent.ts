@@ -11,7 +11,6 @@ import { ProviderTransform } from "../provider/transform"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
-import PROMPT_REFERENCE from "./prompt/reference.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { PermissionNext } from "@/permission/next"
@@ -74,6 +73,17 @@ export namespace Agent {
       },
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
+
+    let explorePrompt = PROMPT_EXPLORE
+    if (cfg.references?.length) {
+      const refs = cfg.references.map((r) => Reference.parse(r))
+      const fresh = await Promise.all(refs.map((r) => Reference.ensureFresh(r)))
+      const valid = fresh.filter(Boolean) as Reference.Info[]
+      if (valid.length > 0) {
+        explorePrompt +=
+          "\n\n<references>\n" + valid.map((r) => `- ${r.url} -> ${r.path}`).join("\n") + "\n</references>"
+      }
+    }
 
     const result: Record<string, Info> = {
       build: {
@@ -145,47 +155,21 @@ export namespace Agent {
             read: "allow",
             external_directory: {
               [Truncate.GLOB]: "allow",
+              [path.join(Global.Path.reference, "*")]: "allow",
             },
           }),
           user,
         ),
-        description: `Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.`,
-        prompt: PROMPT_EXPLORE,
+        description: `Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.${
+          cfg.references?.length
+            ? `\n\nAlways use this to answer questions about the following referenced projects:\n${cfg.references.map((r) => `- ${r}`).join("\n")}`
+            : ""
+        }`,
+        prompt: explorePrompt,
         options: {},
         mode: "subagent",
         native: true,
       },
-      ...(cfg.references?.length
-        ? {
-            reference: {
-              name: "reference",
-              description: `Search across referenced projects configured in opencode.json under "references". Use this to query code in external repositories.\n\nAvailable references:\n${cfg.references.map((r) => `- ${r}`).join("\n")}`,
-              permission: PermissionNext.merge(
-                defaults,
-                PermissionNext.fromConfig({
-                  "*": "deny",
-                  grep: "allow",
-                  glob: "allow",
-                  list: "allow",
-                  bash: "allow",
-                  webfetch: "allow",
-                  websearch: "allow",
-                  codesearch: "allow",
-                  read: "allow",
-                  lsp: "allow",
-                  external_directory: {
-                    [Truncate.GLOB]: "allow",
-                    [path.join(Global.Path.reference, "*")]: "allow",
-                  },
-                }),
-                user,
-              ),
-              options: {},
-              mode: "subagent",
-              native: true,
-            },
-          }
-        : {}),
       compaction: {
         name: "compaction",
         mode: "primary",
@@ -283,20 +267,7 @@ export namespace Agent {
   })
 
   export async function get(agent: string) {
-    const result = await state().then((x) => x[agent])
-    if (!result) return result
-    if (agent === "reference") {
-      const refs = await Reference.list()
-      const fresh = await Promise.all(refs.map((r) => Reference.ensureFresh(r)))
-      const valid = fresh.filter(Boolean) as Reference.Info[]
-      const info =
-        valid.length > 0 ? valid.map((r) => `- ${r.url} at ${r.path}`).join("\n") : "No references available."
-      return {
-        ...result,
-        prompt: PROMPT_REFERENCE + "\n\nAvailable references:\n" + info,
-      }
-    }
-    return result
+    return state().then((x) => x[agent])
   }
 
   export async function list() {
