@@ -87,6 +87,8 @@
     "url": "https://github.com/anomalyco/opencode"
   },
   "license": "MIT",
+  "randomField": "hello-world-12345",
+  "anotherRandomField": "xyz-abc-789",
   "prettier": {
     "semi": false,
     "printWidth": 120
