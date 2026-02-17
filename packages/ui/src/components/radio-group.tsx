@@ -58,10 +58,7 @@ export function RadioGroup<T>(props: RadioGroupProps<T>) {
       onChange={(v) => local.onSelect?.(findOption(v))}
     >
       <div role="presentation" data-slot="radio-group-wrapper">
-        <Kobalte.Indicator
-          data-slot="radio-group-indicator"
-          style={{ "transition-duration": "var(--radio-group-transition-duration, 200ms)" }}
-        />
+        <Kobalte.Indicator data-slot="radio-group-indicator" />
         <div role="presentation" data-slot="radio-group-items">
           <For each={local.options}>
             {(option) => (

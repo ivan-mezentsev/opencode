@@ -1352,7 +1352,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       <span class="sr-only">{mode === "shell" ? language.t("prompt.mode.shell") : mode}</span>
                     </div>
                   )}
-                  class="w-[68px] [&_[data-slot=radio-group-wrapper]]:h-7 [&_[data-slot=radio-group-wrapper]]:w-full [&_[data-slot=radio-group-wrapper]]:rounded-[4px] [&_[data-slot=radio-group-wrapper]]:border-[0.5px] [&_[data-slot=radio-group-wrapper]]:border-border-weak-base [&_[data-slot=radio-group-wrapper]]:bg-surface-inset-base [&_[data-slot=radio-group-wrapper]]:p-0 [&_[data-slot=radio-group-wrapper]]:shadow-none [&_[data-slot=radio-group-wrapper]]:overflow-visible [&_[data-slot=radio-group-items]]:h-full [&_[data-slot=radio-group-items]]:gap-1 [&_[data-slot=radio-group-indicator]]:rounded-[4px] [&_[data-slot=radio-group-indicator]]:bg-surface-raised-stronger-non-alpha [&_[data-slot=radio-group-indicator]]:shadow-[var(--shadow-xs-border)] [&_[data-slot=radio-group-item]]:h-full [&_[data-slot=radio-group-item]]:flex-1 [&_[data-slot=radio-group-item]]:p-0.5 [&_[data-slot=radio-group-item-label]]:size-full [&_[data-slot=radio-group-item-label]]:rounded-[2px] [&_[data-slot=radio-group-item-label]]:p-0"
                 />
               </div>
             </div>
