@@ -1060,7 +1060,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           removeLabel={language.t("prompt.attachment.remove")}
         />
         <div
-          class="relative max-h-[240px] overflow-y-auto"
+          class="relative max-h-[240px] overflow-y-auto no-scrollbar"
           ref={(el) => (scrollRef = el)}
           onMouseDown={(e) => {
             const target = e.target
@@ -1095,7 +1095,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             onKeyDown={handleKeyDown}
             classList={{
               "select-text": true,
-              "w-full pl-3 pr-2 pt-2 pb-12 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap": true,
+              "w-full pl-3 pr-2 pt-2 pb-12 text-14-regular leading-[var(--line-height-large)] text-text-strong focus:outline-none whitespace-pre-wrap": true,
               "[&_[data-type=file]]:text-syntax-property": true,
               "[&_[data-type=agent]]:text-syntax-type": true,
               "font-mono!": store.mode === "shell",
@@ -1103,123 +1103,123 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           />
           <Show when={!prompt.dirty()}>
             <div
-              class="absolute top-0 inset-x-0 pl-3 pr-2 pt-2 pb-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate"
+              class="absolute top-0 inset-x-0 pl-3 pr-2 pt-2 pb-12 text-14-regular leading-[var(--line-height-large)] text-text-weak pointer-events-none whitespace-nowrap truncate"
               classList={{ "font-mono!": store.mode === "shell" }}
             >
               {placeholder()}
             </div>
           </Show>
+        </div>
 
-          <div class="pointer-events-none absolute bottom-2 right-2 flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ACCEPTED_FILE_TYPES.join(",")}
-              class="hidden"
-              onChange={(e) => {
-                const file = e.currentTarget.files?.[0]
-                if (file) addImageAttachment(file)
-                e.currentTarget.value = ""
-              }}
-            />
+        <div class="pointer-events-none absolute bottom-2 right-2 flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={ACCEPTED_FILE_TYPES.join(",")}
+            class="hidden"
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0]
+              if (file) addImageAttachment(file)
+              e.currentTarget.value = ""
+            }}
+          />
 
-            <div
-              aria-hidden={store.mode !== "normal"}
-              class="flex items-center gap-1 transition-all duration-200 ease-out"
-              classList={{
-                "opacity-100 translate-y-0 scale-100 pointer-events-auto": store.mode === "normal",
-                "opacity-0 translate-y-2 scale-95 pointer-events-none": store.mode !== "normal",
-              }}
+          <div
+            aria-hidden={store.mode !== "normal"}
+            class="flex items-center gap-1 transition-all duration-200 ease-out"
+            classList={{
+              "opacity-100 translate-y-0 scale-100 pointer-events-auto": store.mode === "normal",
+              "opacity-0 translate-y-2 scale-95 pointer-events-none": store.mode !== "normal",
+            }}
+          >
+            <TooltipKeybind
+              placement="top"
+              title={language.t("prompt.action.attachFile")}
+              keybind={command.keybind("file.attach")}
             >
+              <Button
+                data-action="prompt-attach"
+                type="button"
+                variant="ghost"
+                class="size-8 p-0"
+                onClick={pick}
+                disabled={store.mode !== "normal"}
+                tabIndex={store.mode === "normal" ? undefined : -1}
+                aria-label={language.t("prompt.action.attachFile")}
+              >
+                <Icon name="plus" class="size-4.5" />
+              </Button>
+            </TooltipKeybind>
+
+            <Tooltip
+              placement="top"
+              inactive={!prompt.dirty() && !working()}
+              value={
+                <Switch>
+                  <Match when={working()}>
+                    <div class="flex items-center gap-2">
+                      <span>{language.t("prompt.action.stop")}</span>
+                      <span class="text-icon-base text-12-medium text-[10px]!">{language.t("common.key.esc")}</span>
+                    </div>
+                  </Match>
+                  <Match when={true}>
+                    <div class="flex items-center gap-2">
+                      <span>{language.t("prompt.action.send")}</span>
+                      <Icon name="enter" size="small" class="text-icon-base" />
+                    </div>
+                  </Match>
+                </Switch>
+              }
+            >
+              <IconButton
+                data-action="prompt-submit"
+                type="submit"
+                disabled={store.mode !== "normal" || (!prompt.dirty() && !working() && commentCount() === 0)}
+                tabIndex={store.mode === "normal" ? undefined : -1}
+                icon={working() ? "stop" : "arrow-up"}
+                variant="primary"
+                class="size-8"
+                aria-label={working() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
+              />
+            </Tooltip>
+          </div>
+        </div>
+
+        <Show when={store.mode === "normal" && permission.permissionsEnabled() && params.id}>
+          <div class="pointer-events-none absolute bottom-2 left-2">
+            <div class="pointer-events-auto">
               <TooltipKeybind
                 placement="top"
-                title={language.t("prompt.action.attachFile")}
-                keybind={command.keybind("file.attach")}
+                gutter={8}
+                title={language.t("command.permissions.autoaccept.enable")}
+                keybind={command.keybind("permissions.autoaccept")}
               >
                 <Button
-                  data-action="prompt-attach"
-                  type="button"
+                  data-action="prompt-permissions"
                   variant="ghost"
-                  class="size-8 p-0"
-                  onClick={pick}
-                  disabled={store.mode !== "normal"}
-                  tabIndex={store.mode === "normal" ? undefined : -1}
-                  aria-label={language.t("prompt.action.attachFile")}
+                  onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
+                  classList={{
+                    "_hidden group-hover/prompt-input:flex size-6 items-center justify-center": true,
+                    "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
+                    "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
+                  }}
+                  aria-label={
+                    permission.isAutoAccepting(params.id!, sdk.directory)
+                      ? language.t("command.permissions.autoaccept.disable")
+                      : language.t("command.permissions.autoaccept.enable")
+                  }
+                  aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
                 >
-                  <Icon name="plus" class="size-4.5" />
+                  <Icon
+                    name="chevron-double-right"
+                    size="small"
+                    classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
+                  />
                 </Button>
               </TooltipKeybind>
-
-              <Tooltip
-                placement="top"
-                inactive={!prompt.dirty() && !working()}
-                value={
-                  <Switch>
-                    <Match when={working()}>
-                      <div class="flex items-center gap-2">
-                        <span>{language.t("prompt.action.stop")}</span>
-                        <span class="text-icon-base text-12-medium text-[10px]!">{language.t("common.key.esc")}</span>
-                      </div>
-                    </Match>
-                    <Match when={true}>
-                      <div class="flex items-center gap-2">
-                        <span>{language.t("prompt.action.send")}</span>
-                        <Icon name="enter" size="small" class="text-icon-base" />
-                      </div>
-                    </Match>
-                  </Switch>
-                }
-              >
-                <IconButton
-                  data-action="prompt-submit"
-                  type="submit"
-                  disabled={store.mode !== "normal" || (!prompt.dirty() && !working() && commentCount() === 0)}
-                  tabIndex={store.mode === "normal" ? undefined : -1}
-                  icon={working() ? "stop" : "arrow-up"}
-                  variant="primary"
-                  class="size-8"
-                  aria-label={working() ? language.t("prompt.action.stop") : language.t("prompt.action.send")}
-                />
-              </Tooltip>
             </div>
           </div>
-
-          <Show when={store.mode === "normal" && permission.permissionsEnabled() && params.id}>
-            <div class="pointer-events-none absolute bottom-2 left-2">
-              <div class="pointer-events-auto">
-                <TooltipKeybind
-                  placement="top"
-                  gutter={8}
-                  title={language.t("command.permissions.autoaccept.enable")}
-                  keybind={command.keybind("permissions.autoaccept")}
-                >
-                  <Button
-                    data-action="prompt-permissions"
-                    variant="ghost"
-                    onClick={() => permission.toggleAutoAccept(params.id!, sdk.directory)}
-                    classList={{
-                      "_hidden group-hover/prompt-input:flex size-6 items-center justify-center": true,
-                      "text-text-base": !permission.isAutoAccepting(params.id!, sdk.directory),
-                      "hover:bg-surface-success-base": permission.isAutoAccepting(params.id!, sdk.directory),
-                    }}
-                    aria-label={
-                      permission.isAutoAccepting(params.id!, sdk.directory)
-                        ? language.t("command.permissions.autoaccept.disable")
-                        : language.t("command.permissions.autoaccept.enable")
-                    }
-                    aria-pressed={permission.isAutoAccepting(params.id!, sdk.directory)}
-                  >
-                    <Icon
-                      name="chevron-double-right"
-                      size="small"
-                      classList={{ "text-icon-success-base": permission.isAutoAccepting(params.id!, sdk.directory) }}
-                    />
-                  </Button>
-                </TooltipKeybind>
-              </div>
-            </div>
-          </Show>
-        </div>
+        </Show>
       </form>
       <Show when={store.mode === "normal" || store.mode === "shell"}>
         <div class="-mt-3.5 bg-background-base border border-border-weak-base relative z-0 rounded-[12px] rounded-tl-0 rounded-tr-0 overflow-clip">
