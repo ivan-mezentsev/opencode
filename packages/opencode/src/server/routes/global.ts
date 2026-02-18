@@ -135,6 +135,10 @@ export const GlobalRoutes = lazy(() =>
             .number()
             .optional()
             .meta({ description: "Filter sessions updated on or after this timestamp (milliseconds since epoch)" }),
+          cursor: z.coerce
+            .number()
+            .optional()
+            .meta({ description: "Return sessions updated before this timestamp (milliseconds since epoch)" }),
           search: z.string().optional().meta({ description: "Filter sessions by title (case-insensitive)" }),
           limit: z.coerce.number().optional().meta({ description: "Maximum number of sessions to return" }),
           archived: z.coerce.boolean().optional().meta({ description: "Include archived sessions (default false)" }),
@@ -142,18 +146,25 @@ export const GlobalRoutes = lazy(() =>
       ),
       async (c) => {
         const query = c.req.valid("query")
+        const limit = query.limit ?? 100
         const sessions: Session.GlobalInfo[] = []
         for await (const session of Session.listGlobal({
           directory: query.directory,
           roots: query.roots,
           start: query.start,
+          cursor: query.cursor,
           search: query.search,
-          limit: query.limit,
+          limit: limit + 1,
           archived: query.archived,
         })) {
           sessions.push(session)
         }
-        return c.json(sessions)
+        const hasMore = sessions.length > limit
+        const list = hasMore ? sessions.slice(0, limit) : sessions
+        if (hasMore && list.length > 0) {
+          c.header("x-next-cursor", String(list[list.length - 1].time.updated))
+        }
+        return c.json(list)
       },
     )
     .get(

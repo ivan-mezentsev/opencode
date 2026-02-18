@@ -62,4 +62,28 @@ describe("Session.listGlobal", () => {
 
     expect(allIds).toContain(archived.id)
   })
+
+  test("supports cursor pagination", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const first = await Instance.provide({
+      directory: tmp.path,
+      fn: async () => Session.create({ title: "page-one" }),
+    })
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    const second = await Instance.provide({
+      directory: tmp.path,
+      fn: async () => Session.create({ title: "page-two" }),
+    })
+
+    const page = [...Session.listGlobal({ directory: tmp.path, limit: 1 })]
+    expect(page.length).toBe(1)
+    expect(page[0].id).toBe(second.id)
+
+    const next = [...Session.listGlobal({ directory: tmp.path, limit: 10, cursor: page[0].time.updated })]
+    const ids = next.map((session) => session.id)
+
+    expect(ids).toContain(first.id)
+    expect(ids).not.toContain(second.id)
+  })
 })

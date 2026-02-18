@@ -10,7 +10,7 @@ import { Flag } from "../flag/flag"
 import { Identifier } from "../id/id"
 import { Installation } from "../installation"
 
-import { Database, NotFoundError, eq, and, or, gte, isNull, desc, like, inArray } from "../storage/db"
+import { Database, NotFoundError, eq, and, or, gte, isNull, desc, like, inArray, lt } from "../storage/db"
 import type { SQL } from "../storage/db"
 import { SessionTable, MessageTable, PartTable } from "./session.sql"
 import { ProjectTable } from "../project/project.sql"
@@ -568,6 +568,7 @@ export namespace Session {
     directory?: string
     roots?: boolean
     start?: number
+    cursor?: number
     search?: string
     limit?: number
     archived?: boolean
@@ -582,6 +583,9 @@ export namespace Session {
     }
     if (input?.start) {
       conditions.push(gte(SessionTable.time_updated, input.start))
+    }
+    if (input?.cursor) {
+      conditions.push(lt(SessionTable.time_updated, input.cursor))
     }
     if (input?.search) {
       conditions.push(like(SessionTable.title, `%${input.search}%`))
