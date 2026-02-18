@@ -1,0 +1,154 @@
+import path from "path"
+import os from "os"
+import z from "zod"
+import { type ParseError as JsoncParseError, parse as parseJsonc, printParseErrorCode } from "jsonc-parser"
+import { NamedError } from "@opencode-ai/util/error"
+import { Filesystem } from "@/util/filesystem"
+import { Flag } from "@/flag/flag"
+import { Global } from "@/global"
+
+export namespace ConfigPaths {
+  export async function projectFiles(name: string, directory: string, worktree: string) {
+    const files: string[] = []
+    for (const file of [`${name}.jsonc`, `${name}.json`]) {
+      const found = await Filesystem.findUp(file, directory, worktree)
+      for (const resolved of found.toReversed()) {
+        files.push(resolved)
+      }
+    }
+    return files
+  }
+
+  export async function directories(directory: string, worktree: string) {
+    return [
+      Global.Path.config,
+      ...(!Flag.OPENCODE_DISABLE_PROJECT_CONFIG
+        ? await Array.fromAsync(
+            Filesystem.up({
+              targets: [".opencode"],
+              start: directory,
+              stop: worktree,
+            }),
+          )
+        : []),
+      ...(await Array.fromAsync(
+        Filesystem.up({
+          targets: [".opencode"],
+          start: Global.Path.home,
+          stop: Global.Path.home,
+        }),
+      )),
+      ...(Flag.OPENCODE_CONFIG_DIR ? [Flag.OPENCODE_CONFIG_DIR] : []),
+    ]
+  }
+
+  export function fileInDirectory(dir: string, name: string) {
+    return [path.join(dir, `${name}.jsonc`), path.join(dir, `${name}.json`)]
+  }
+
+  export const JsonError = NamedError.create(
+    "ConfigJsonError",
+    z.object({
+      path: z.string(),
+      message: z.string().optional(),
+    }),
+  )
+
+  export const InvalidError = NamedError.create(
+    "ConfigInvalidError",
+    z.object({
+      path: z.string(),
+      issues: z.custom<z.core.$ZodIssue[]>().optional(),
+      message: z.string().optional(),
+    }),
+  )
+
+  /** Read a config file, returning undefined for missing files and throwing JsonError for other failures. */
+  export async function readFile(filepath: string) {
+    return Bun.file(filepath)
+      .text()
+      .catch((err) => {
+        if (err.code === "ENOENT") return
+        throw new JsonError({ path: filepath }, { cause: err })
+      })
+  }
+
+  /** Apply {env:VAR} and {file:path} substitutions to config text. */
+  async function substitute(text: string, configFilepath: string, missing: "error" | "empty" = "error") {
+    text = text.replace(/\{env:([^}]+)\}/g, (_, varName) => {
+      return process.env[varName] || ""
+    })
+
+    const fileMatches = text.match(/\{file:[^}]+\}/g)
+    if (!fileMatches) return text
+
+    const configDir = path.dirname(configFilepath)
+    const lines = text.split("\n")
+
+    for (const match of fileMatches) {
+      const lineIndex = lines.findIndex((line) => line.includes(match))
+      if (lineIndex !== -1 && lines[lineIndex].trim().startsWith("//")) continue
+
+      let filePath = match.replace(/^\{file:/, "").replace(/\}$/, "")
+      if (filePath.startsWith("~/")) {
+        filePath = path.join(os.homedir(), filePath.slice(2))
+      }
+
+      const resolvedPath = path.isAbsolute(filePath) ? filePath : path.resolve(configDir, filePath)
+      const fileContent = (
+        await Bun.file(resolvedPath)
+          .text()
+          .catch((error) => {
+            if (missing === "empty") return ""
+
+            const errMsg = `bad file reference: "${match}"`
+            if (error.code === "ENOENT") {
+              throw new InvalidError(
+                {
+                  path: configFilepath,
+                  message: errMsg + ` ${resolvedPath} does not exist`,
+                },
+                { cause: error },
+              )
+            }
+            throw new InvalidError({ path: configFilepath, message: errMsg }, { cause: error })
+          })
+      ).trim()
+
+      text = text.replace(match, () => JSON.stringify(fileContent).slice(1, -1))
+    }
+
+    return text
+  }
+
+  /** Substitute and parse JSONC text, throwing JsonError on syntax errors. */
+  export async function parseText(text: string, configFilepath: string, missing: "error" | "empty" = "error") {
+    text = await substitute(text, configFilepath, missing)
+
+    const errors: JsoncParseError[] = []
+    const data = parseJsonc(text, errors, { allowTrailingComma: true })
+    if (errors.length) {
+      const lines = text.split("\n")
+      const errorDetails = errors
+        .map((e) => {
+          const beforeOffset = text.substring(0, e.offset).split("\n")
+          const line = beforeOffset.length
+          const column = beforeOffset[beforeOffset.length - 1].length + 1
+          const problemLine = lines[line - 1]
+
+          const error = `${printParseErrorCode(e.error)} at line ${line}, column ${column}`
+          if (!problemLine) return error
+
+          return `${error}\n   Line ${line}: ${problemLine}\n${"".padStart(column + 9)}^`
+        })
+        .join("\n")
+
+      throw new JsonError({
+        path: configFilepath,
+        message: `\n--- JSONC Input ---\n${text}\n--- Errors ---\n${errorDetails}\n--- End ---`,
+      })
+    }
+
+    return data
+  }
+}
