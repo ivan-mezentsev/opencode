@@ -47,6 +47,7 @@ import { Markdown } from "./markdown"
 import { ImagePreview } from "./image-preview"
 import { getDirectory as _getDirectory, getFilename } from "@opencode-ai/util/path"
 import { checksum } from "@opencode-ai/util/encode"
+import { relativizeProjectPaths } from "../lib/relativize-project-paths"
 import { Tooltip } from "./tooltip"
 import { IconButton } from "./icon-button"
 import { TextShimmer } from "./text-shimmer"
@@ -143,12 +144,6 @@ function createThrottledValue(getValue: () => string) {
   })
 
   return value
-}
-
-function relativizeProjectPaths(text: string, directory?: string) {
-  if (!text) return ""
-  if (!directory) return text
-  return text.split(directory).join("")
 }
 
 function getDirectory(path: string | undefined) {
