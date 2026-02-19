@@ -19,6 +19,11 @@ Use the github-issue-search tool to find potentially related issues.
 
 IMPORTANT: The input will contain a line `CURRENT_ISSUE_NUMBER: NNNN`. Never mark that issue as a duplicate of itself.
 
+The input may also contain `MODE: recheck-compliance`.
+
+- When MODE is `recheck-compliance`, ONLY run compliance checks. Do not run duplicate checks. Do not include duplicate or keybind sections.
+- When MODE is missing, do the full opened-issue behavior (compliance + duplicates + keybind note).
+
 ## Compliance checks
 
 This project has three issue templates:
@@ -49,11 +54,18 @@ If the issue mentions keybinds, keyboard shortcuts, or key bindings, include a n
 
 ## Output rules
 
-If the issue is compliant AND no duplicates are found AND no keybind note is needed, output exactly:
+If MODE is `recheck-compliance` and the issue is compliant, output exactly:
+
+No action required
+
+If MODE is missing and the issue is compliant AND no duplicates are found AND no keybind note is needed, output exactly:
 
 No action required
 
 Otherwise output exactly one markdown comment body with this structure:
+
+- In `recheck-compliance` mode: include only the non-compliant section and ending note.
+- In default mode: include sections as needed (non-compliant, duplicates, keybind).
 
 - If non-compliant, start with:
 
