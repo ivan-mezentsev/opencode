@@ -65,12 +65,10 @@ export namespace ConfigPaths {
 
   /** Read a config file, returning undefined for missing files and throwing JsonError for other failures. */
   export async function readFile(filepath: string) {
-    return Bun.file(filepath)
-      .text()
-      .catch((err) => {
-        if (err.code === "ENOENT") return
-        throw new JsonError({ path: filepath }, { cause: err })
-      })
+    return Filesystem.readText(filepath).catch((err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") return
+      throw new JsonError({ path: filepath }, { cause: err })
+    })
   }
 
   /** Apply {env:VAR} and {file:path} substitutions to config text. */
