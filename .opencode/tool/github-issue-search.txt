@@ -1,0 +1,10 @@
+Use this tool to search GitHub issues by title and description.
+
+This tool searches issues in the sst/opencode repository and returns LLM-friendly results including:
+- Issue number and title
+- Author
+- State (open/closed/merged)
+- Labels
+- Description snippet
+
+Use the query parameter to search for keywords that might appear in issue titles or descriptions.
