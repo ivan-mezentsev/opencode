@@ -1281,7 +1281,6 @@ export namespace Config {
       })
     }
 
-    const parsed = Info.safeParse(data)
     const normalized = (() => {
       if (!data || typeof data !== "object" || Array.isArray(data)) return data
       const copy = { ...(data as Record<string, unknown>) }
