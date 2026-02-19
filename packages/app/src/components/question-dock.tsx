@@ -3,6 +3,7 @@ import { createStore } from "solid-js/store"
 import { Button } from "@opencode-ai/ui/button"
 import { DockPrompt } from "@opencode-ai/ui/dock-prompt"
 import { Icon } from "@opencode-ai/ui/icon"
+import { Markdown } from "@opencode-ai/ui/markdown"
 import { showToast } from "@opencode-ai/ui/toast"
 import type { QuestionAnswer, QuestionRequest } from "@opencode-ai/sdk/v2"
 import { useLanguage } from "@/context/language"
@@ -277,7 +278,7 @@ export const QuestionDock: Component<{ request: QuestionRequest }> = (props) => 
         </>
       }
     >
-      <div data-slot="question-text">{question()?.question}</div>
+      <Markdown data-slot="question-text" text={question()?.question ?? ""} />
       <Show when={multi()} fallback={<div data-slot="question-hint">{language.t("ui.question.singleHint")}</div>}>
         <div data-slot="question-hint">{language.t("ui.question.multiHint")}</div>
       </Show>

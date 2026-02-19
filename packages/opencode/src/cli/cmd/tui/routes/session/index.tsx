@@ -2080,7 +2080,7 @@ function TodoWrite(props: ToolProps<typeof TodoWriteTool>) {
 }
 
 function Question(props: ToolProps<typeof QuestionTool>) {
-  const { theme } = useTheme()
+  const { theme, syntax } = useTheme()
   const count = createMemo(() => props.input.questions?.length ?? 0)
 
   function format(answer?: string[]) {
@@ -2096,7 +2096,13 @@ function Question(props: ToolProps<typeof QuestionTool>) {
             <For each={props.input.questions ?? []}>
               {(q, i) => (
                 <box flexDirection="column">
-                  <text fg={theme.textMuted}>{q.question}</text>
+                  <code
+                    filetype="markdown"
+                    drawUnstyledText={false}
+                    syntaxStyle={syntax()}
+                    content={q.question}
+                    fg={theme.textMuted}
+                  />
                   <text fg={theme.text}>{format(props.metadata.answers?.[i()])}</text>
                 </box>
               )}
