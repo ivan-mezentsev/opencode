@@ -214,7 +214,15 @@ if (Script.release) {
       await $`zip -r ../../${key}.zip *`.cwd(`dist/${key}/bin`)
     }
   }
-  await $`gh release upload v${Script.version} ./dist/*.zip ./dist/*.tar.gz --clobber`
+
+  const zips = await Array.fromAsync(new Bun.Glob("dist/*.zip").scan())
+  const tars = await Array.fromAsync(new Bun.Glob("dist/*.tar.gz").scan())
+  const files = [...zips, ...tars]
+  if (files.length === 0) {
+    console.warn("No release archives found in dist; skipping gh release upload")
+  } else {
+    await $`gh release upload v${Script.version} ${files} --clobber`
+  }
 }
 
 export { binaries }
