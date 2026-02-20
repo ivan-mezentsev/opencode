@@ -156,6 +156,59 @@ export function BasicTool(props: BasicToolProps) {
   )
 }
 
-export function GenericTool(props: { tool: string; status?: string; hideDetails?: boolean }) {
-  return <BasicTool icon="mcp" status={props.status} trigger={{ title: props.tool }} hideDetails={props.hideDetails} />
+export function GenericTool(props: {
+  tool: string
+  status?: string
+  hideDetails?: boolean
+  input?: unknown
+  output?: string
+}) {
+  const format = (value: unknown) => {
+    if (value === undefined) return ""
+    if (value === null) return "null"
+    if (typeof value === "string") return value
+    if (typeof value === "number" || typeof value === "boolean") return String(value)
+    if (typeof value === "object") {
+      if (Array.isArray(value) && value.length === 0) return ""
+      if (!Array.isArray(value) && Object.keys(value as Record<string, unknown>).length === 0) return ""
+    }
+
+    try {
+      return JSON.stringify(
+        value,
+        (_key, next) => (typeof next === "bigint" ? next.toString() : next),
+        2,
+      )
+    } catch {
+      return String(value)
+    }
+  }
+
+  const text = () => {
+    const ins = format(props.input)
+    const out = typeof props.output === "string" ? props.output : ""
+    const blocks: string[] = []
+    if (ins) blocks.push(`INPUT\n${ins}`)
+    if (out) blocks.push(`OUTPUT\n${out}`)
+    return blocks.join("\n\n")
+  }
+
+  const hasDetails = () => !!text()
+
+  return (
+    <BasicTool
+      icon="mcp"
+      status={props.status}
+      trigger={{ title: props.tool }}
+      hideDetails={props.hideDetails || !hasDetails()}
+    >
+      <Show when={hasDetails()}>
+        <div data-component="tool-output" data-scrollable>
+          <pre>
+            <code>{text()}</code>
+          </pre>
+        </div>
+      </Show>
+    </BasicTool>
+  )
 }
