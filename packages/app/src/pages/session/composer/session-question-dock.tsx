@@ -22,6 +22,7 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
     answers: [] as QuestionAnswer[],
     custom: [] as string[],
     customOn: [] as boolean[],
+    collapsed: false,
     editing: false,
     sending: false,
   })
@@ -260,6 +261,15 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
     clipboard.writeText(text).catch(() => {})
   }
 
+  const collapse = () => {
+    const next = !store.collapsed
+    setStore("collapsed", next)
+
+    if (!root) return
+    if (next) root.setAttribute("data-collapsed", "")
+    else root.removeAttribute("data-collapsed")
+  }
+
   return (
     <DockPrompt
       kind="question"
@@ -268,6 +278,16 @@ export const SessionQuestionDock: Component<{ request: QuestionRequest; onSubmit
         <>
           <div data-slot="question-header-title">{summary()}</div>
           <div data-slot="question-progress">
+            <IconButton
+              type="button"
+              icon={store.collapsed ? "expand" : "collapse"}
+              size="small"
+              variant="ghost"
+              aria-label={store.collapsed ? language.t("session.todo.expand") : language.t("session.todo.collapse")}
+              title={store.collapsed ? language.t("session.todo.expand") : language.t("session.todo.collapse")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={collapse}
+            />
             <IconButton
               type="button"
               icon="copy"
